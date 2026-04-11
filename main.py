@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.middleware.cors import CORSMiddleware
+
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from schemas import (
@@ -55,6 +57,21 @@ from database import (
 from bson import ObjectId
 
 app = FastAPI(title="Email Dashboard API")
+
+# --- CORS CONFIGURATION ---
+origins = [
+    "https://marketing-dashboard123.vercel.app",
+    "http://localhost:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 
 # --- CUSTOM EXCEPTION HANDLERS ---
 
