@@ -436,13 +436,69 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
 @app.get("/users/me/details", response_model=ApiResponse[UserDetailResponse])
 def get_own_details(current_user: dict = Depends(get_current_user)):
     """
-    Get current user profile details including handled clients.
+    Get current user profile details including nested handled clients and dashboard stats.
     """
-    # Find active clients handled by this user
-    clients = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+    # 1. Determine which clients we're looking at
+    if current_user["role"] in [UserRole.ADMIN, UserRole.MANAGER]:
+        clients_raw = list(clients_collection.find({}))
+    else:
+        clients_raw = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+    
+    handled_clients = []
+    total_system_amount = 0.0
+    total_system_paid = 0.0
+    total_system_orders = 0
+    total_system_pending = 0
+    
+    for c in clients_raw:
+        # Aggregation logic for EACH client
+        c_orders = list(orders_collection.find({"client_id": c["client_id"]}))
+        c_payments = list(payments_collection.find({"client_id": c["client_id"]}))
+        
+        c_total_amount = sum(o.get("total_amount", 0.0) for o in c_orders)
+        c_writing_amount = sum(o.get("writing_amount", 0.0) for o in c_orders)
+        c_modification_amount = sum(o.get("modification_amount", 0.0) for o in c_orders)
+        c_po_amount = sum(o.get("po_amount", 0.0) for o in c_orders)
+        c_paid_amount = sum(p.get("amount", 0.0) for p in c_payments)
+        
+        client_data = format_mongo_id(c)
+        client_data.update({
+            "total_amount": c_total_amount,
+            "writing_amount": c_writing_amount,
+            "modification_amount": c_modification_amount,
+            "po_amount": c_po_amount,
+            "paid_amount": c_paid_amount,
+            "remaining_amount": c_total_amount - c_paid_amount
+        })
+        handled_clients.append(client_data)
+        
+        # Aggregates for GLOBAL stats (scoped to current view)
+        total_system_amount += c_total_amount
+        total_system_paid += c_paid_amount
+        total_system_orders += len(c_orders)
+        total_system_pending += sum(1 for o in c_orders if o.get("payment_status") == "Pending")
+
+    # 2. Calculate Dashboard Stats
+    total_clients_count = len(clients_raw)
+    
+    # Formulas for percentages (can be adjusted as needed)
+    overall_amt_pct = (total_system_paid / total_system_amount * 100) if total_system_amount > 0 else 0.0
+    pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
+    
+    dashboard_stats = {
+        "overall_amount": total_system_amount,
+        "overall_amount_percentage": round(overall_amt_pct, 1),
+        "total_clients": total_clients_count,
+        "total_clients_percentage": 100.0, 
+        "pending_count": total_system_pending,
+        "pending_count_percentage": round(pending_pct, 1),
+        "reject_count": 0,
+        "reject_count_percentage": 0.0
+    }
     
     user_data = format_mongo_id(current_user)
-    user_data["handled_clients"] = [format_mongo_id(c) for c in clients]
+    user_data["handled_clients"] = handled_clients
+    user_data["dashboard_stats"] = dashboard_stats
     
     return {
         "status_code": 200,
@@ -623,8 +679,15 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
     }
 
 @app.get("/orders", response_model=ApiResponse[list[OrderResponse]])
-def get_orders(current_user: dict = Depends(require_manager_or_higher)):
-    orders = list(orders_collection.find())
+def get_orders(current_user: dict = Depends(get_current_user)):
+    query = {}
+    if current_user["role"] == UserRole.EMPLOYEE:
+        # Get clients handled by this employee
+        my_clients = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+        my_client_ids = [c["client_id"] for c in my_clients]
+        query = {"client_id": {"$in": my_client_ids}}
+        
+    orders = list(orders_collection.find(query))
     return {
         "status_code": 200,
         "status": "success",
@@ -651,8 +714,15 @@ def create_payment(payment: PaymentCreate, current_user: dict = Depends(require_
     }
 
 @app.get("/payments", response_model=ApiResponse[list[PaymentResponse]])
-def get_payments(current_user: dict = Depends(require_manager_or_higher)):
-    payments = list(payments_collection.find())
+def get_payments(current_user: dict = Depends(get_current_user)):
+    query = {}
+    if current_user["role"] == UserRole.EMPLOYEE:
+        # Get clients handled by this employee
+        my_clients = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+        my_client_ids = [c["client_id"] for c in my_clients]
+        query = {"client_id": {"$in": my_client_ids}}
+        
+    payments = list(payments_collection.find(query))
     return {
         "status_code": 200,
         "status": "success",

@@ -43,8 +43,19 @@ class UserResponse(UserBase):
     class Config:
         populate_by_name = True
 
+class DashboardStats(BaseModel):
+    overall_amount: float = 0.0
+    overall_amount_percentage: float = 0.0
+    total_clients: int = 0
+    total_clients_percentage: float = 0.0
+    pending_count: int = 0
+    pending_count_percentage: float = 0.0
+    reject_count: int = 0
+    reject_count_percentage: float = 0.0
+
 class UserDetailResponse(UserResponse):
-    handled_clients: list[ClientResponse] = []
+    handled_clients: list[ClientDetailResponse] = []
+    dashboard_stats: Optional[DashboardStats] = None
 
 class Token(BaseModel):
     access_token: str
@@ -88,6 +99,19 @@ class ClientCreate(ClientBase):
 class ClientResponse(ClientBase):
     id: str = Field(..., alias="_id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    class Config:
+        populate_by_name = True
+
+class ClientDetailResponse(ClientBase):
+    id: str = Field(..., alias="_id")
+    total_amount: float = 0.0
+    writing_amount: float = 0.0
+    modification_amount: float = 0.0
+    po_amount: float = 0.0
+    paid_amount: float = 0.0
+    remaining_amount: float = 0.0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
     class Config:
         populate_by_name = True
 
