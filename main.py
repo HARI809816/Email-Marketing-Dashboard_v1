@@ -474,6 +474,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                 "po_amount": {"$sum": "$orders.po_amount"},
                 "paid_amount": {"$sum": "$payments.amount"},
                 "order_count": {"$size": "$orders"},
+                "payment_status": {"$sum": "$payments.payment_status"},
                 "pending_order_count": {
                     "$size": {
                         "$filter": {
