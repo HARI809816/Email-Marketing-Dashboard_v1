@@ -1,6 +1,6 @@
-# Manual Testing Guide - Email Dashboard API
+# Manual Testing Guide - Email Dashboard API (Full Payloads)
 
-This guide provides step-by-step instructions for testing each API endpoint. Use tools like **Postman**, **Insomnia**, or the built-in Swagger UI (`/docs`).
+This guide provides comprehensive JSON examples for testing. Use these "Full Payloads" to verify that all database fields are correctly captured.
 
 ---
 
@@ -8,168 +8,157 @@ This guide provides step-by-step instructions for testing each API endpoint. Use
 
 ### Step 1: Initialize Super Admin
 - **Endpoint**: `POST /init-super-admin`
-- **Body**:
+- **Goal**: Create an Admin account. Works as long as there are fewer than 5 admins.
+- **Full Body**:
   ```json
   {
     "email": "superadmin@example.com",
     "password": "SecurePassword123",
-    "full_name": "John Doe"
-  }
-  ```
-- **Goal**: Create the first Super Admin. Succeeds only if no users with Admin role exist.
-
-### Step 2: Login (Employee Role)
-- **Endpoint**: `POST /login`
-- **Goal**: Receive an `access_token` immediately.
-
-### Step 3: Login (Admin or Manager Role)
-- **Endpoint**: `POST /login`
-- **Response**: `{"otp_required": true, "email": "..."}`
-- **Goal**: Trigger OTP generation. Check server logs for the 6-digit OTP.
-
-### Step 4: Verify OTP (Admin/Manager Only)
-- **Endpoint**: `POST /verify-otp`
-- **Body**:
-  ```json
-  {
-    "email": "admin@example.com",
-    "otp": "123456"
-  }
-  ```
-- **Goal**: Receive the final `access_token` after valid OTP entry.
-
----
-
-## 2. Admin & User Management (Role-Based)
-
-### Create a User/Admin (Admin or Manager Required)
-- **Endpoint**: `POST /users`
-- **Header**: `Authorization: Bearer <token>`
-- **Body**:
-  ```json
-  {
-    "email": "newuser@example.com",
-    "password": "NewPassword123",
-    "full_name": "New User",
-    "role": "manager" 
-  }
-  ```
-- **Rules**:
-  - Role can be `admin`, `manager`, or `employee`.
-  - Only an `admin` can create another `admin` (Max 2 total).
-  - Both `admin` and `manager` can create others.
-
-### View Users/Admins
-- **GET /users**: (Admin/Super Admin) List all regular users.
-- **GET /admins**: (Super Admin Only) List all Admins and Super Admins.
-
-### User Profile Details (Name, Email, Number, Clients)
-- **GET /users/me/details**: (Any logged-in user) Get your own profile, role, and a list of clients you are handling.
-- **GET /users/{email}/details**: (Admin/Manager) Get profile and clients handled by a specific user.
-
-### Manage Employee Permissions (Admin/Manager Only)
-- **Endpoint**: `PUT /users/permissions`
-- **Body**:
-  ```json
-  {
-    "email": "employee@example.com",
+    "full_name": "Ultimate Admin",
+    "role": "admin",
+    "phone_number": "+1234567890",
     "permissions": {
-      "dashboard": ["remarks", "client_whatsapp_number", "payment_status"]
+      "dashboard": ["remarks", "payment_status", "total_amount"]
     }
   }
   ```
-- **Goal**: Grant an employee specific columns they are allowed to update in the dashboard.
+
+### Step 2: Login
+- **Endpoint**: `POST /login`
+- **Body**: `{"email": "superadmin@example.com", "password": "SecurePassword123"}`
+- **Goal**: Receive an `access_token` and potential `otp_required` flag.
 
 ---
 
-## 3. Entity CRUD Operations (Clients, Orders, etc.)
+## 2. User & Permission Management
 
-*Note: All follow a similar pattern. Below is an example for Clients.*
+### Create a Complete Employee (Admin/Manager Required)
+- **Endpoint**: `POST /users`
+- **Full Body**:
+  ```json
+  {
+    "email": "employee_test@example.com",
+    "password": "EmployeePassword123",
+    "full_name": "Test Employee",
+    "role": "employee",
+    "phone_number": "+0987654321",
+    "permissions": {
+      "dashboard": ["remarks", "client_whatsapp_number", "client_link", "payment_status"]
+    }
+  }
+  ```
 
-### Create a Client
+---
+
+## 3. Entity Management (Full Chain)
+
+### A. Create a Full Client
 - **Endpoint**: `POST /clients`
-- **Header**: `Authorization: Bearer <token>`
-- **Body**:
+- **Full Body**:
   ```json
   {
-    "client_id": "CL-001",
-    "name": "Global Tech Corp",
-    "email": "contact@globaltech.com"
+    "client_id": "CL-FULL-001",
+    "name": "Acme Global Solutions",
+    "location": "New York, USA",
+    "email": "billing@acme.com",
+    "whatsapp_no": "+15550123456",
+    "client_ref_no": "REF-ACME-2024",
+    "client_link": "https://acmesolutions.com/portal",
+    "bank_account": "CHASE-987654321",
+    "affiliation": "Global Tech Alliance",
+    "total_orders": 0,
+    "client_handler": "Test Employee"
   }
   ```
 
-### Link Entities (Verification Flow)
-1. **Create Client** -> Note the `client_id` (e.g., `CL-001`).
-2. **Create Manuscript** -> Use the `client_id` string (e.g., `CL-001`) in the `client_id` field.
-3. **Create Order** -> Use the `client_id` (e.g., `CL-001`) and `manuscript_id` (e.g., `MS-CL-001-1`).
-
----
-
-## 4. Password Management
-
-### Update Own Password
-- **Endpoint**: `PUT /users/me/password`
-- **Body**: `{"new_password": "NewSecret123"}`
-- **Goal**: Verify you can still log in with the new password.
-
-### Reset Someone Else's Password (Admin/Super Admin)
-- **Endpoint**: `PUT /users/password`
-- **Body**:
+### B. Create a Detailed Manuscript
+- **Endpoint**: `POST /manuscripts`
+- **Full Body**:
   ```json
   {
-    "email": "user@example.com",
-    "new_password": "ResetPassword123"
+    "manuscript_id": "MS-FULL-001",
+    "title": "Advanced AI Research Paper",
+    "order_type": "Scientific Writing",
+    "client_id": "CL-FULL-001",
+    "client_ref_no": "REF-ACME-2024"
   }
   ```
-- **Rules**: 
-  - Admin can reset Users.
-  - Super Admin can reset Admins and Users.
 
----
-
-## 5. Dashboard (Aggregated View)
-
-### Get Aggregated Order Details
-- **Endpoint**: `GET /dashboard/orders`
-- **Header**: `Authorization: Bearer <token>`
-- **Goal**: Receive a flattened list of orders including client details and payment phase info.
-
-### Update Dashboard Order (Role-Based Column Access)
-- **Endpoint**: `PATCH /dashboard/orders/{order_id}`
-- **Header**: `Authorization: Bearer <token>`
-- **Body**:
+### C. Create a Detailed Order
+- **Endpoint**: `POST /orders`
+- **Full Body**:
   ```json
   {
-    "remarks": "Priority client update",
-    "client_whatsapp_number": "+1234567890"
+    "order_id": "ORD-FULL-001",
+    "client_id": "CL-FULL-001",
+    "manuscript_id": "MS-FULL-001",
+    "client_ref_no": "REF-ACME-2024",
+    "s_no": 1,
+    "order_date": "2024-04-11T10:00:00",
+    "order_type": "Scientific Writing",
+    "index": "A1",
+    "rank": "Tier 1",
+    "currency": "USD",
+    "total_amount": 1500.0,
+    "writing_amount": 800.0,
+    "modification_amount": 400.0,
+    "po_amount": 300.0,
+    "writing_start_date": "2024-04-12T09:00:00",
+    "writing_end_date": "2024-04-20T17:00:00",
+    "modification_start_date": "2024-04-21T09:00:00",
+    "modification_end_date": "2024-04-25T17:00:00",
+    "po_start_date": "2024-04-26T09:00:00",
+    "po_end_date": "2024-04-28T17:00:00",
+    "payment_status": "Partial",
+    "assigned_to": "Test Employee",
+    "remarks": "Urgent project for key client"
   }
   ```
-- **Testing Logic**:
-  1. **As Admin/Manager**: Any field in `DashboardUpdate` can be updated.
-  2. **As Employee**: 
-     - Try updating a field you **have** permission for (mapped in `PUT /users/permissions`). Should succeed.
-     - Try updating a field you **don't** have permission for (e.g., `total_amount`). Should return `403 Forbidden`.
 
----
-
-## 6. Payments (Phase Tracking)
-
-### Create a Payment
+### D. Create a Detailed Payment
 - **Endpoint**: `POST /payments`
-- **Body**:
+- **Full Body**:
   ```json
   {
-    "client_id": "CL-001",
+    "client_id": "CL-FULL-001",
     "phase": 1,
     "amount": 500.0,
-    "phase_1_payment": 500.0,
-    "phase_1_payment_date": "2024-04-08T10:00:00"
+    "payment_received_account": "HDFC-BANK-HQ",
+    "payment_date": "2024-04-11T12:00:00"
   }
   ```
-- **Goal**: Verify that phase-specific fields (`phase_1_payment`, `phase_2_payment`, etc.) are correctly stored.
 
 ---
 
-## 6. Constraint Verification
-- **Test Max 2 Super Admins**: Try to create a 3rd Super Admin via `POST /admins`. It should return a 400 error.
-- **Unauthorized Access**: Attempt to call `GET /admins` with a regular User token. It should return 403 Forbidden.
+## 4. Dashboard & Assignment Features
+
+### A. Assign Client (Admin/Manager New Feature)
+- **Endpoint**: `POST /clients/assign`
+- **Full Body**:
+  ```json
+  {
+    "client_id": "CL-FULL-001",
+    "employee_email": "employee_test@example.com"
+  }
+  ```
+
+### B. Bulk Dashboard Update
+- **Endpoint**: `PATCH /dashboard/orders/ORD-FULL-001`
+- **Full Body (Updated many fields at once)**:
+  ```json
+  {
+    "client_location": "London, UK",
+    "client_whatsapp_number": "+447700900123",
+    "order_type": "Proofreading",
+    "total_amount": 1600.0,
+    "payment_status": "Completed",
+    "remarks": "Updated after client consultation",
+    "phase_1_payment": 500.0,
+    "phase_1_payment_date": "2024-04-11T12:00:00"
+  }
+  ```
+
+---
+
+## 5. Constraint Verification
+- **Test Max 5 Admins**: Try to create a 6th Admin via `POST /users` or `POST /init-super-admin`. It should return a `400 Bad Request` with "Maximum of 5 Admins allowed".

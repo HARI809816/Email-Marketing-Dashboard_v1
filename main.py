@@ -25,7 +25,8 @@ from schemas import (
     OTPVerifyRequest,
     PermissionUpdate,
     DashboardUpdate,
-    ApiResponse
+    ApiResponse,
+    ClientAssignRequest
 )
 import random
 import smtplib
@@ -148,13 +149,14 @@ def read_root():
 @app.post("/init-super-admin", response_model=ApiResponse[dict], status_code=status.HTTP_201_CREATED)
 def init_super_admin(user: UserCreate):
     """
-    Endpoint to initialize the first super admin user. 
-    Only works if no admin exists in the database.
+    Endpoint to initialize the first super admin users. 
+    Works if fewer than 5 admins exist in the database.
     """
-    if users_collection.find_one({"role": UserRole.ADMIN}):
+    admin_count = users_collection.count_documents({"role": UserRole.ADMIN})
+    if admin_count >= 5:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Admin already exists"
+            detail="Maximum of 5 Admins already exist"
         )
     
     user_dict = user.model_dump()
@@ -295,10 +297,10 @@ def create_user(user: UserCreate, current_user: dict = Depends(require_manager_o
             )
              
         admin_count = users_collection.count_documents({"role": UserRole.ADMIN})
-        if admin_count >= 2:
+        if admin_count >= 5:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Maximum of 2 Admins allowed"
+                detail="Maximum of 5 Admins allowed"
             )
             
     user_dict = user.model_dump()
@@ -522,6 +524,44 @@ def get_client(client_id: str, current_user: dict = Depends(require_manager_or_h
         "status": "success",
         "message": "Client fetched successfully",
         "data": format_mongo_id(client)
+    }
+
+@app.post("/clients/assign", response_model=ApiResponse[ClientResponse])
+def assign_client(request: ClientAssignRequest, current_user: dict = Depends(require_manager_or_higher)):
+    """
+    Assign an Employee to a Client.
+    Restricted to Admin and Manager.
+    """
+    # 1. Verify Employee
+    employee = users_collection.find_one({"email": request.employee_email, "role": UserRole.EMPLOYEE})
+    if not employee:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Employee with email {request.employee_email} not found"
+        )
+    
+    # 2. Verify Client
+    client = clients_collection.find_one({"client_id": request.client_id})
+    if not client:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Client with ID {request.client_id} not found"
+        )
+    
+    # 3. Update Client Handler
+    clients_collection.update_one(
+        {"client_id": request.client_id},
+        {"$set": {"client_handler": employee.get("full_name")}}
+    )
+    
+    # Fetch updated client
+    updated_client = clients_collection.find_one({"client_id": request.client_id})
+    
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Client {request.client_id} assigned to {employee.get('full_name')}",
+        "data": format_mongo_id(updated_client)
     }
 
 # --- MANUSCRIPTS ---

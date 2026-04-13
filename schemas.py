@@ -91,6 +91,10 @@ class ClientResponse(ClientBase):
     class Config:
         populate_by_name = True
 
+class ClientAssignRequest(BaseModel):
+    client_id: str
+    employee_email: EmailStr
+
 class ManuscriptBase(BaseModel):
     manuscript_id: str
     title: str
