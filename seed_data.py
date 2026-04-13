@@ -48,11 +48,13 @@ def seed_clients(handlers):
     for i in range(1, 11):
         client_id = f"CL-{i:03d}"
         org_name = random.choice(org_names)
+        # Clean org name for email (remove spaces and special characters like &)
+        clean_org = "".join(e for e in org_name if e.isalnum())
         clients.append({
             "client_id": client_id,
             "name": f"{org_name} {i}",
             "country": random.choice(countries),
-            "email": f"contact@{org_name.lower().replace(' ', '')}.com",
+            "email": f"contact@{clean_org.lower()}.com",
             "whatsapp_no": f"+12345678{i:02d}",
             "client_ref_no": f"REF-{2000 + i}",
             "client_link": f"https://org{i}.com",
