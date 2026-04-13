@@ -524,7 +524,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
     
     dashboard_stats = {
-        "overall_amount": total_system_amount,
+        "overall_amount": total_system_paid,
         "overall_amount_percentage": round(overall_amt_pct, 1),
         "total_clients": total_clients_count,
         "total_clients_percentage": 100.0, 
