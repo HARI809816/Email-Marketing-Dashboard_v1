@@ -58,7 +58,7 @@ def generate_clients(admin_ids):
         clients.append({
             "client_id": f"CL-{i:03d}",
             "name": university_names[i//2 % 5] if is_uni else company_names[i//2 % 5],
-            "location": random.choice(["California, USA", "London, UK", "Berlin, Germany", "Tokyo, Japan", "Singapore"]),
+            "country": random.choice(["USA", "UK", "Germany", "Japan", "Singapore", "Canada", "Australia", "France", "China", "India", "Netherlands", "Norway"]),
             "email": f"info@{ref_no.lower()}.org",
             "whatsapp_no": f"+1{''.join([str(random.randint(0,9)) for _ in range(9)])}",
             "client_ref_no": ref_no,
@@ -86,7 +86,12 @@ def generate_manuscripts(clients):
         "Microplastic Contamination in Urban Waterways",
         "Machine Learning Models for Financial Forecasting",
         "Quantum Computing: A New Frontier in Cybersecurity",
-        "Ethical Implications of Artificial Intelligence in Healthcare"
+        "Ethical Implications of Artificial Intelligence in Healthcare",
+        "Nanotechnology in Targeted Cancer Therapy",
+        "Smart Cities: Urban Planning for 2050",
+        "Data Privacy in the Age of Big Data",
+        "Autonomous Vehicles: Safety and Regulation",
+        "The Future of Remote Work: A Socioeconomic Analysis"
     ]
     
     ms_list = []

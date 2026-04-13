@@ -56,6 +56,7 @@ class DashboardStats(BaseModel):
 class UserDetailResponse(UserResponse):
     handled_clients: list[ClientDetailResponse] = []
     dashboard_stats: Optional[DashboardStats] = None
+    country_split: dict[str, float] = {}
 
 class Token(BaseModel):
     access_token: str
@@ -83,7 +84,7 @@ class OTPVerifyRequest(BaseModel):
 class ClientBase(BaseModel):
     client_id: str
     name: str
-    location: Optional[str] = None
+    country: Optional[str] = None
     email: Optional[EmailStr] = None
     whatsapp_no: Optional[str] = None
     client_ref_no: Optional[str] = None
@@ -198,7 +199,7 @@ class DashboardOrderResponse(BaseModel):
     s_no: Optional[int] = None
     order_date: Optional[datetime] = None
     client_id: str
-    client_location: Optional[str] = None
+    client_country: Optional[str] = None
     client_Email: Optional[str] = None
     client_whatsapp_number: Optional[str] = None
     ref_no: Optional[str] = None

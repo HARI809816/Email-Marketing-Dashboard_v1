@@ -37,16 +37,22 @@ def clear_operational_data():
 def seed_clients(handlers):
     print("Seeding clients...")
     clients = []
-    locations = ["California, USA", "London, UK", "Berlin, Germany", "Tokyo, Japan", "Singapore", "New York, USA"]
+    countries = ["USA", "UK", "Germany", "Japan", "Singapore", "Canada", "Australia", "France", "China", "India", "Netherlands", "Norway"]
     affiliations = ["University", "Research Center", "Corporate", "Freelance"]
     
+    org_names = [
+        "Global Research Inst", "Health & Biotech", "Tech Synergy", "Green Energy Corp", 
+        "Astra Solutions", "Horizon Labs", "BioMed Frontier", "Infinite Tech", "Apex Research", "Nova Systems"
+    ]
+
     for i in range(1, 11):
         client_id = f"CL-{i:03d}"
+        org_name = random.choice(org_names)
         clients.append({
             "client_id": client_id,
-            "name": f"Organization {i}",
-            "location": random.choice(locations),
-            "email": f"contact{i}@org{i}.com",
+            "name": f"{org_name} {i}",
+            "country": random.choice(countries),
+            "email": f"contact@{org_name.lower().replace(' ', '')}.com",
             "whatsapp_no": f"+12345678{i:02d}",
             "client_ref_no": f"REF-{2000 + i}",
             "client_link": f"https://org{i}.com",
@@ -65,7 +71,9 @@ def seed_manuscripts(clients):
     ms_list = []
     titles = [
         "Impact of AI on Healthcare", "Renewable Energy Trends", "Genetic Mapping in Agriculture", 
-        "Global Economic Shifts", "Marine Biodiversity Loss", "Blockchain in Logistics"
+        "Global Economic Shifts", "Marine Biodiversity Loss", "Blockchain in Logistics",
+        "Deep Learning for Vision", "Quantum Computing Basics", "Edge Computing in IoT",
+        "NLP Advances in 2025", "Cybersecurity in FinTech", "Zero Trust Architecture"
     ]
     
     for client in clients:

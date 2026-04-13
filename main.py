@@ -490,6 +490,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     clients_with_stats = list(clients_collection.aggregate(pipeline))
     
     handled_clients = []
+    country_split = {}
     total_system_amount = 0.0
     total_system_paid = 0.0
     total_system_orders = 0
@@ -498,6 +499,10 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     for c in clients_with_stats:
         c["_id"] = str(c["_id"])
         c["remaining_amount"] = c["total_amount"] - c["paid_amount"]
+        
+        # Calculate country split for Pie Chart
+        country = c.get("country", "Unknown")
+        country_split[country] = country_split.get(country, 0.0) + c.get("total_amount", 0.0)
         
         # Pull global stats from client totals
         total_system_amount += c["total_amount"]
@@ -531,6 +536,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     user_data = format_mongo_id(current_user.copy())
     user_data["handled_clients"] = handled_clients
     user_data["dashboard_stats"] = dashboard_stats
+    user_data["country_split"] = country_split
     
     return {
         "status_code": 200,
@@ -811,7 +817,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "s_no": "$order.s_no",
                 "order_date": "$order.order_date",
                 "client_id": "$client_id",
-                "client_location": "$location",
+                "client_country": "$country",
                 "client_Email": "$email",
                 "client_whatsapp_number": "$whatsapp_no",
                 "ref_no": {"$ifNull": ["$order.client_ref_no", "$client_ref_no"]},
@@ -882,7 +888,7 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
                 )
 
     # 2. Map fields to collections
-    client_fields = ["client_location", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
+    client_fields = ["client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
     order_fields = ["order_date", "ref_no", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
     payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date"]
 
@@ -901,7 +907,7 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
         # Map dashboard field names back to client collection names if different
         mapped_client_updates = {}
         mapping = {
-            "client_location": "location",
+            "client_country": "country",
             "client_Email": "email",
             "client_whatsapp_number": "whatsapp_no",
             "client_link": "client_link",
