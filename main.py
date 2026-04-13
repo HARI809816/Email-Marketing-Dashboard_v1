@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
@@ -73,6 +74,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # --- CUSTOM EXCEPTION HANDLERS ---
@@ -437,12 +440,54 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
 def get_own_details(current_user: dict = Depends(get_current_user)):
     """
     Get current user profile details including nested handled clients and dashboard stats.
+    Optimized with MongoDB Aggregation Pipeline.
     """
-    # 1. Determine which clients we're looking at
-    if current_user["role"] in [UserRole.ADMIN, UserRole.MANAGER]:
-        clients_raw = list(clients_collection.find({}))
-    else:
-        clients_raw = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+    # 1. Determine client filter
+    client_match = {}
+    if current_user["role"] not in [UserRole.ADMIN, UserRole.MANAGER]:
+        client_match = {"client_handler": current_user.get("full_name")}
+
+    # 2. Aggregation Pipeline to fetch clients and their stats in ONE go
+    pipeline = [
+        {"$match": client_match},
+        {
+            "$lookup": {
+                "from": "orders",
+                "localField": "client_id",
+                "foreignField": "client_id",
+                "as": "orders"
+            }
+        },
+        {
+            "$lookup": {
+                "from": "payments",
+                "localField": "client_id",
+                "foreignField": "client_id",
+                "as": "payments"
+            }
+        },
+        {
+            "$addFields": {
+                "total_amount": {"$sum": "$orders.total_amount"},
+                "writing_amount": {"$sum": "$orders.writing_amount"},
+                "modification_amount": {"$sum": "$orders.modification_amount"},
+                "po_amount": {"$sum": "$orders.po_amount"},
+                "paid_amount": {"$sum": "$payments.amount"},
+                "order_count": {"$size": "$orders"},
+                "pending_order_count": {
+                    "$size": {
+                        "$filter": {
+                            "input": "$orders",
+                            "as": "o",
+                            "cond": {"$eq": ["$$o.payment_status", "Pending"]}
+                        }
+                    }
+                }
+            }
+        }
+    ]
+    
+    clients_with_stats = list(clients_collection.aggregate(pipeline))
     
     handled_clients = []
     total_system_amount = 0.0
@@ -450,38 +495,25 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     total_system_orders = 0
     total_system_pending = 0
     
-    for c in clients_raw:
-        # Aggregation logic for EACH client
-        c_orders = list(orders_collection.find({"client_id": c["client_id"]}))
-        c_payments = list(payments_collection.find({"client_id": c["client_id"]}))
+    for c in clients_with_stats:
+        c["_id"] = str(c["_id"])
+        c["remaining_amount"] = c["total_amount"] - c["paid_amount"]
         
-        c_total_amount = sum(o.get("total_amount", 0.0) for o in c_orders)
-        c_writing_amount = sum(o.get("writing_amount", 0.0) for o in c_orders)
-        c_modification_amount = sum(o.get("modification_amount", 0.0) for o in c_orders)
-        c_po_amount = sum(o.get("po_amount", 0.0) for o in c_orders)
-        c_paid_amount = sum(p.get("amount", 0.0) for p in c_payments)
+        # Pull global stats from client totals
+        total_system_amount += c["total_amount"]
+        total_system_paid += c["paid_amount"]
+        total_system_orders += c["order_count"]
+        total_system_pending += c["pending_order_count"]
         
-        client_data = format_mongo_id(c)
-        client_data.update({
-            "total_amount": c_total_amount,
-            "writing_amount": c_writing_amount,
-            "modification_amount": c_modification_amount,
-            "po_amount": c_po_amount,
-            "paid_amount": c_paid_amount,
-            "remaining_amount": c_total_amount - c_paid_amount
-        })
-        handled_clients.append(client_data)
-        
-        # Aggregates for GLOBAL stats (scoped to current view)
-        total_system_amount += c_total_amount
-        total_system_paid += c_paid_amount
-        total_system_orders += len(c_orders)
-        total_system_pending += sum(1 for o in c_orders if o.get("payment_status") == "Pending")
+        # Cleanup extra fields not needed in response
+        c.pop("orders", None)
+        c.pop("payments", None)
+        c.pop("order_count", None)
+        c.pop("pending_order_count", None)
+        handled_clients.append(c)
 
-    # 2. Calculate Dashboard Stats
-    total_clients_count = len(clients_raw)
-    
-    # Formulas for percentages (can be adjusted as needed)
+    # 3. Calculate Dashboard Stats
+    total_clients_count = len(clients_with_stats)
     overall_amt_pct = (total_system_paid / total_system_amount * 100) if total_system_amount > 0 else 0.0
     pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
     
@@ -496,7 +528,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         "reject_count_percentage": 0.0
     }
     
-    user_data = format_mongo_id(current_user)
+    user_data = format_mongo_id(current_user.copy())
     user_data["handled_clients"] = handled_clients
     user_data["dashboard_stats"] = dashboard_stats
     
@@ -736,100 +768,86 @@ def get_payments(current_user: dict = Depends(get_current_user)):
 def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     """
     Unified endpoint for the frontend dashboard.
-    Aggregates data from Orders, Clients, and Payments.
-    Client-First Logic: Shows clients even if no orders exist.
+    Optimized with MongoDB Aggregation Pipeline ($lookup + $unwind).
+    Shows clients even if no orders exist.
     """
-    # 1. Get filtered clients
-    client_query = {}
+    # 1. Get filtered clients query
+    client_match = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        client_query = {"client_handler": current_user.get("full_name")}
+        client_match = {"client_handler": current_user.get("full_name")}
         
-    all_clients = list(clients_collection.find(client_query))
-    dashboard_data = []
+    # 2. Aggregation Pipeline
+    pipeline = [
+        {"$match": client_match},
+        {
+            "$lookup": {
+                "from": "orders",
+                "localField": "client_id",
+                "foreignField": "client_id",
+                "as": "order"
+            }
+        },
+        # Join clients with their orders; keep clients with 0 orders (placeholder row)
+        {"$unwind": {"path": "$order", "preserveNullAndEmptyArrays": True}},
+        {
+            "$lookup": {
+                "from": "payments",
+                "localField": "order.order_id",
+                "foreignField": "order_id",
+                "as": "p_list"
+            }
+        },
+        {
+            "$addFields": {
+                # Aggregate payment phases in DB
+                "p1": {"$filter": {"input": "$p_list", "as": "p", "cond": {"$eq": ["$$p.phase", 1]}}},
+                "p2": {"$filter": {"input": "$p_list", "as": "p", "cond": {"$eq": ["$$p.phase", 2]}}},
+                "p3": {"$filter": {"input": "$p_list", "as": "p", "cond": {"$eq": ["$$p.phase", 3]}}}
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "s_no": "$order.s_no",
+                "order_date": "$order.order_date",
+                "client_id": "$client_id",
+                "client_location": "$location",
+                "client_Email": "$email",
+                "client_whatsapp_number": "$whatsapp_no",
+                "ref_no": {"$ifNull": ["$order.client_ref_no", "$client_ref_no"]},
+                "manuscript_id": "$order.manuscript_id",
+                "order_type": "$order.order_type",
+                "index": "$order.index",
+                "rank": "$order.rank",
+                "currency": {"$ifNull": ["$order.currency", "USD"]},
+                "total_amount": {"$ifNull": ["$order.total_amount", 0.0]},
+                "writing_amount": {"$ifNull": ["$order.writing_amount", 0.0]},
+                "modification_amount": {"$ifNull": ["$order.modification_amount", 0.0]},
+                "po_amount": {"$ifNull": ["$order.po_amount", 0.0]},
+                "writing_start_date": "$order.writing_start_date",
+                "writing_end_date": "$order.writing_end_date",
+                "modification_start_date": "$order.modification_start_date",
+                "modification_end_date": "$order.modification_end_date",
+                "po_start_date": "$order.po_start_date",
+                "po_end_date": "$order.po_end_date",
+                "phase": {"$literal": None},
+                "phase_1_payment": {"$sum": "$p1.amount"},
+                "phase_1_payment_date": {"$arrayElemAt": ["$p1.payment_date", 0]},
+                "phase_2_payment": {"$sum": "$p2.amount"},
+                "phase_2_payment_date": {"$arrayElemAt": ["$p2.payment_date", 0]},
+                "phase_3_payment": {"$sum": "$p3.amount"},
+                "phase_3_payment_date": {"$arrayElemAt": ["$p3.payment_date", 0]},
+                "payment_status": {"$ifNull": ["$order.payment_status", "No Order"]},
+                "client_link": "$client_link",
+                "bank_account": "$bank_account",
+                "client_affiliations": "$affiliation",
+                "remarks": {"$ifNull": ["$order.remarks", "No active orders for this client"]}
+            }
+        }
+    ]
     
-    for client in all_clients:
-        # 2. Find orders for this client
-        client_orders = list(orders_collection.find({"client_id": client["client_id"]}))
-        
-        if not client_orders:
-            # Create a "Placeholder" row for clients without orders
-            entry = {
-                "s_no": None,
-                "order_date": None,
-                "client_id": client.get("client_id"),
-                "client_location": client.get("location"),
-                "client_Email": client.get("email"),
-                "client_whatsapp_number": client.get("whatsapp_no"),
-                "ref_no": client.get("client_ref_no"),
-                "manuscript_id": None,
-                "order_type": None,
-                "index": None,
-                "rank": None,
-                "currency": "USD",
-                "total_amount": 0.0,
-                "writing_amount": 0.0,
-                "modification_amount": 0.0,
-                "po_amount": 0.0,
-                "payment_status": "No Order",
-                "client_link": client.get("client_link"),
-                "bank_account": client.get("bank_account"),
-                "client_affiliations": client.get("affiliation"),
-                "remarks": "No active orders for this client"
-            }
-            dashboard_data.append(entry)
-            continue
-
-        # 3. Process existing orders
-        for order in client_orders:
-            payments = list(payments_collection.find({"order_id": order["order_id"]}))
-            
-            # Aggregate payment info
-            phase_payments = {1: {"amount": 0.0, "date": None}, 2: {"amount": 0.0, "date": None}, 3: {"amount": 0.0, "date": None}}
-            for p in payments:
-                phase = p.get("phase", 1)
-                if phase in phase_payments:
-                    phase_payments[phase]["amount"] += p.get("amount", 0.0)
-                    if not phase_payments[phase]["date"]:
-                        phase_payments[phase]["date"] = p.get("payment_date")
-
-            entry = {
-                "s_no": order.get("s_no"),
-                "order_date": order.get("order_date"),
-                "client_id": order.get("client_id"),
-                "client_location": client.get("location"),
-                "client_Email": client.get("email"),
-                "client_whatsapp_number": client.get("whatsapp_no"),
-                "ref_no": order.get("client_ref_no"),
-                "manuscript_id": order.get("manuscript_id"),
-                "order_type": order.get("order_type"),
-                "index": order.get("index"),
-                "rank": order.get("rank"),
-                "currency": order.get("currency"),
-                "total_amount": order.get("total_amount"),
-                "writing_amount": order.get("writing_amount"),
-                "modification_amount": order.get("modification_amount"),
-                "po_amount": order.get("po_amount"),
-                "writing_start_date": order.get("writing_start_date"),
-                "writing_end_date": order.get("writing_end_date"),
-                "modification_start_date": order.get("modification_start_date"),
-                "modification_end_date": order.get("modification_end_date"),
-                "po_start_date": order.get("po_start_date"),
-                "po_end_date": order.get("po_end_date"),
-                "phase" : None, 
-                "phase_1_payment": phase_payments[1]["amount"],
-                "phase_1_payment_date": phase_payments[1]["date"],
-                "phase_2_payment": phase_payments[2]["amount"],
-                "phase_2_payment_date": phase_payments[2]["date"],
-                "phase_3_payment": phase_payments[3]["amount"],
-                "phase_3_payment_date": phase_payments[3]["date"],
-                "payment_status": order.get("payment_status"),
-                "client_link": client.get("client_link"),
-                "bank_account": client.get("bank_account"),
-                "client_affiliations": client.get("affiliation"),
-                "remarks": order.get("remarks")
-            }
-            dashboard_data.append(entry)
-        
+    dashboard_data = list(clients_collection.aggregate(pipeline))
+    
     return {
         "status_code": 200,
         "status": "success",
