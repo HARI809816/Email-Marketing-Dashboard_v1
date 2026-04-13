@@ -111,6 +111,7 @@ class ClientDetailResponse(ClientBase):
     po_amount: float = 0.0
     paid_amount: float = 0.0
     remaining_amount: float = 0.0
+    payment_status: Optional[str] = "No Order"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
