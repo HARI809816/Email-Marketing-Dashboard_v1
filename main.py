@@ -502,7 +502,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         c["remaining_amount"] = c["total_amount"] - c["paid_amount"]
         
         # Calculate country split for Pie Chart
-        country = c.get("country", "Unknown")
+        country = c.get("country") or "Unknown"
         country_split[country] = country_split.get(country, 0.0) + c.get("total_amount", 0.0)
         
         # Pull global stats from client totals
