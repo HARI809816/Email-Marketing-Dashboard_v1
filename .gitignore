@@ -10,3 +10,5 @@ wheels/
 venv
 .env
 .venv
+server.log
+server_error.log

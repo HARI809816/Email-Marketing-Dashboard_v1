@@ -2,7 +2,6 @@ import sys
 import os
 import random
 from datetime import datetime, timedelta
-from bson import ObjectId
 
 # Add the current directory to sys.path to import local modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -29,11 +28,11 @@ def clear_data():
 def generate_users():
     print("Generating 5 users...")
     users = [
-        {"name": "Robert Smith", "email": "robert.s@company.com", "role": UserRole.ADMIN},
-        {"name": "Sarah Jenkins", "email": "sarah.j@company.com", "role": UserRole.MANAGER},
-        {"name": "Michael Chen", "email": "michael.c@company.com", "role": UserRole.MANAGER},
-        {"name": "Emily Davis", "email": "emily.d@company.com", "role": UserRole.EMPLOYEE},
-        {"name": "David Wilson", "email": "david.w@company.com", "role": UserRole.EMPLOYEE},
+        {"full_name": "Robert Smith", "email": "robert.s@company.com", "role": UserRole.ADMIN},
+        {"full_name": "Sarah Jenkins", "email": "sarah.j@company.com", "role": UserRole.MANAGER},
+        {"full_name": "Michael Chen", "email": "michael.c@company.com", "role": UserRole.MANAGER},
+        {"full_name": "Emily Davis", "email": "emily.d@company.com", "role": UserRole.EMPLOYEE},
+        {"full_name": "David Wilson", "email": "david.w@company.com", "role": UserRole.EMPLOYEE},
     ]
     
     for u in users:
@@ -66,7 +65,7 @@ def generate_clients(admin_ids):
             "bank_account": f"IBAN-{''.join([str(random.randint(0,9)) for _ in range(12)])}",
             "affiliation": "University" if is_uni else "Corporate",
             "total_orders": 0, # Will be updated after orders
-            "client_handlers": str(random.choice(admin_ids)),
+            "client_handler": random.choice(admin_ids), # Use client_handler (singular) as per schema
             "created_at": datetime.utcnow() - timedelta(days=random.randint(20, 40))
         })
     
@@ -75,7 +74,7 @@ def generate_clients(admin_ids):
     return list(clients_collection.find())
 
 def generate_manuscripts(clients):
-    print("Generating 20 manuscripts...")
+    print("Generating manuscripts for ~30% of clients...")
     titles = [
         "Impact of Climate Change on Marine Biodiversity",
         "Advancements in CRISPR-Cas9 Gene Editing",
@@ -93,32 +92,68 @@ def generate_manuscripts(clients):
         "Autonomous Vehicles: Safety and Regulation",
         "The Future of Remote Work: A Socioeconomic Analysis"
     ]
+    journal_names = [
+        "Nature", "Science", "The Lancet", "Cell", "BMJ",
+        "IEEE Transactions", "PNAS", "JAMA", "Elsevier Reviews",
+        "Springer Nature", "Frontiers in AI", "PLoS ONE"
+    ]
+    
+    # Only ~30% of clients get manuscripts
+    ms_clients = random.sample(clients, max(1, len(clients) * 3 // 10))
     
     ms_list = []
-    for i in range(20):
-        client = clients[i % 10]
-        ms_list.append({
-            "manuscript_id": f"MS-{client['client_id']}-{i+1}",
-            "title": random.choice(titles) + f" (Part {i//10 + 1})",
-            "order_type": random.choice(["writing", "modification", "proofreading"]),
-            "client_id": client["client_id"],
-            "client_ref_no": client["client_ref_no"],
-            "created_at": datetime.utcnow() - timedelta(days=random.randint(15, 25))
-        })
+    for client in ms_clients:
+        for j in range(1, random.randint(2, 3)):
+            ms_list.append({
+                "manuscript_id": f"MS-{client['client_id']}-{j}",
+                "title": random.choice(titles) + f" (Part {j})",
+                "journal_name": random.choice(journal_names),
+                "order_type": random.choice(["writing", "modification", "proofreading"]),
+                "client_id": client["client_id"],
+                "created_at": datetime.utcnow() - timedelta(days=random.randint(15, 25))
+            })
     
-    manuscripts_collection.insert_many(ms_list)
-    print("Inserted 20 manuscripts.")
+    if ms_list:
+        manuscripts_collection.insert_many(ms_list)
+    print(f"Inserted {len(ms_list)} manuscripts for {len(ms_clients)} clients.")
     return list(manuscripts_collection.find())
 
 def generate_orders(clients, manuscripts, user_ids):
     print("Generating 30 orders...")
+    
+    paper_titles = [
+        "CRISPR Gene Therapy Review", "Stem Cell Research 2024",
+        "Marine Ecosystem Monitoring", "AI-Driven Drug Discovery",
+        "Renewable Energy Grid Analysis", "Blockchain Supply Chain Audit",
+        "Quantum Cryptography Protocols", "NLP for Clinical Data",
+        "Smart City Traffic Optimization", "Deep Learning in Radiology",
+        "Zero-Emission Vehicle Technology", "Biomarker Discovery Methods",
+        "Edge Computing in Healthcare", "Cybersecurity Threat Models",
+        "Sustainable Agriculture Review"
+    ]
+    journal_names = [
+        "Nature", "Science", "The Lancet", "Cell", "BMJ",
+        "IEEE Transactions", "PNAS", "JAMA", "Elsevier Reviews",
+        "Springer Nature", "Frontiers in AI", "PLoS ONE"
+    ]
+    
+    # Build a map of client_id -> list of manuscripts for that client
+    ms_by_client = {}
+    for ms in manuscripts:
+        cid = ms["client_id"]
+        ms_by_client.setdefault(cid, []).append(ms)
+    
     orders = []
     for i in range(1, 31):
-        ms = manuscripts[i % 20]
-        client = next(c for c in clients if c["client_id"] == ms["client_id"])
+        client = clients[(i - 1) % len(clients)]
+        
+        # ~30% of orders get linked to a manuscript (if the client has any)
+        linked_ms = None
+        if client["client_id"] in ms_by_client and random.random() < 0.3:
+            linked_ms = random.choice(ms_by_client[client["client_id"]])
         
         # Logical dates
-        start_date = ms["created_at"] + timedelta(days=random.randint(1, 3))
+        start_date = datetime.utcnow() - timedelta(days=random.randint(10, 30))
         end_date = start_date + timedelta(days=random.randint(5, 15))
         
         total = random.randint(800, 5000)
@@ -130,12 +165,15 @@ def generate_orders(clients, manuscripts, user_ids):
         
         orders.append({
             "order_id": f"ORD-{2024}-{i:03d}",
-            "client_ref_no": client["client_ref_no"],
+            "reference_id": f"REF-{i:04d}",  # Unique per order, created by users
+            "client_ref_no": client.get("client_ref_no"),  # Optional, from client
             "s_no": i,
             "order_date": start_date,
             "client_id": client["client_id"],
-            "manuscript_id": ms["manuscript_id"],
-            "order_type": ms["order_type"],
+            "manuscript_id": linked_ms["manuscript_id"] if linked_ms else None,
+            "journal_name": linked_ms["journal_name"] if linked_ms else random.choice(journal_names),
+            "title": linked_ms["title"] if linked_ms else random.choice(paper_titles),
+            "order_type": linked_ms["order_type"] if linked_ms else random.choice(["writing", "modification", "proofreading"]),
             "index": random.choice(["SCI", "Scopus", "ESCI"]),
             "rank": random.choice(["Q1", "Q2", "Q3", "Q4"]),
             "currency": random.choice(["USD", "INR"]),
@@ -148,7 +186,6 @@ def generate_orders(clients, manuscripts, user_ids):
             "modification_start_date": end_date + timedelta(days=1),
             "modification_end_date": end_date + timedelta(days=5),
             "payment_status": status,
-            "assigned_to": str(random.choice(user_ids)),
             "remarks": "Priority order" if i % 5 == 0 else "Routine check",
             "created_at": start_date,
             "updated_at": datetime.utcnow()
@@ -165,14 +202,17 @@ def generate_orders(clients, manuscripts, user_ids):
     return list(orders_collection.find())
 
 def generate_payments(clients, orders):
-    print("Generating 40 payments...")
+    print("Generating payments...")
     payments = []
     for i in range(40):
         # Pick an order that is either partial or paid
-        order = random.choice([o for o in orders if o["payment_status"] in ["partial", "paid"]])
+        eligible = [o for o in orders if o["payment_status"] in ["partial", "paid"]]
+        if not eligible:
+            break
+        order = random.choice(eligible)
         client = next(c for c in clients if c["client_id"] == order["client_id"])
         
-        # Determin phase based on existing payments for this order
+        # Determine phase based on existing payments for this order
         existing_phases = [p["phase"] for p in payments if p.get("order_id") == order["order_id"]]
         phase = 1 if not existing_phases else max(existing_phases) + 1
         if phase > 3: phase = 3 # Cap at 3 for logic
@@ -188,7 +228,8 @@ def generate_payments(clients, orders):
         pay_date = order["order_date"] + timedelta(days=random.randint(5, 30))
         
         payments.append({
-            "client_ref_number": client["client_ref_no"],
+            "client_ref_number": client.get("client_ref_no"),
+            "reference_id": order.get("reference_id"),  # Copied from order
             "client_id": client["client_id"],
             "order_id": order["order_id"], # Extra internal ref for logic
             "phase": phase,
@@ -223,11 +264,14 @@ if __name__ == "__main__":
         orders = generate_orders(clients, manuscripts, all_user_ids)
         generate_payments(clients, orders)
         
+        ms_count = manuscripts_collection.count_documents({})
+        orders_with_ms = orders_collection.count_documents({"manuscript_id": {"$ne": None}})
+        
         print("\n" + "="*40)
         print("REALISTIC MOCK DATA GENERATED SUCCESSFULLY")
         print("="*40)
-        print(f"Users: 5  |  Clients: 10  |  Manuscripts: 20")
-        print(f"Orders: 30 |  Payments: {payments_collection.count_documents({})} ")
+        print(f"Users: 5  |  Clients: 10  |  Manuscripts: {ms_count}")
+        print(f"Orders: 30 |  Orders with manuscript: {orders_with_ms}  |  Payments: {payments_collection.count_documents({})} ")
         print("="*40)
         print(f"Sample Login: robert.s@company.com / password123 (ADMIN)")
         

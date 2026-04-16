@@ -69,7 +69,7 @@ def seed_clients(handlers):
     return clients
 
 def seed_manuscripts(clients):
-    print("Seeding manuscripts...")
+    print("Seeding manuscripts (~30% of clients)...")
     ms_list = []
     titles = [
         "Impact of AI on Healthcare", "Renewable Energy Trends", "Genetic Mapping in Agriculture", 
@@ -77,40 +77,75 @@ def seed_manuscripts(clients):
         "Deep Learning for Vision", "Quantum Computing Basics", "Edge Computing in IoT",
         "NLP Advances in 2025", "Cybersecurity in FinTech", "Zero Trust Architecture"
     ]
+    journal_names = [
+        "Nature", "Science", "The Lancet", "Cell", "BMJ",
+        "IEEE Transactions", "PNAS", "JAMA", "Elsevier Reviews",
+        "Springer Nature", "Frontiers in AI", "PLoS ONE"
+    ]
     
-    for client in clients:
-        # 2 Manuscripts per client
-        for j in range(1, 3):
+    # Only ~30% of clients get manuscripts
+    ms_clients = random.sample(clients, max(1, len(clients) * 3 // 10))
+    
+    for client in ms_clients:
+        # 1-2 Manuscripts per selected client
+        for j in range(1, random.randint(2, 3)):
             ms_id = f"MS-{client['client_id']}-{j}"
             ms_list.append({
                 "manuscript_id": ms_id,
                 "title": f"{random.choice(titles)} Part {j}",
+                "journal_name": random.choice(journal_names),
                 "order_type": random.choice(["Original", "Modification", "Proofreading"]),
                 "client_id": client["client_id"],
-                "client_ref_no": client["client_ref_no"],
                 "created_at": datetime.utcnow() - timedelta(days=25)
             })
-    manuscripts_collection.insert_many(ms_list)
-    print(f"Successfully seeded {len(ms_list)} manuscripts.")
+    if ms_list:
+        manuscripts_collection.insert_many(ms_list)
+    print(f"Successfully seeded {len(ms_list)} manuscripts for {len(ms_clients)} clients.")
     return ms_list
 
 def seed_orders(clients, manuscripts):
     print("Seeding orders...")
+    
+    paper_titles = [
+        "CRISPR Gene Therapy Review", "Stem Cell Research 2024",
+        "Marine Ecosystem Monitoring", "AI-Driven Drug Discovery",
+        "Renewable Energy Grid Analysis", "Blockchain Supply Chain Audit",
+        "Quantum Cryptography Protocols", "NLP for Clinical Data",
+        "Smart City Traffic Optimization", "Deep Learning in Radiology"
+    ]
+    journal_names = [
+        "Nature", "Science", "The Lancet", "Cell", "BMJ",
+        "IEEE Transactions", "PNAS", "JAMA", "Elsevier Reviews",
+        "Springer Nature", "Frontiers in AI", "PLoS ONE"
+    ]
+    
+    # Build a map of client_id -> list of manuscripts
+    ms_by_client = {}
+    for ms in manuscripts:
+        ms_by_client.setdefault(ms["client_id"], []).append(ms)
+    
     orders = []
-    for i, ms in enumerate(manuscripts):
-        client = next(c for c in clients if c["client_id"] == ms["client_id"])
+    for i in range(1, 21):  # 20 orders
+        client = clients[(i - 1) % len(clients)]
         
-        order_id = f"ORD-{ms['manuscript_id']}"
+        # ~30% of orders get linked to a manuscript (if the client has any)
+        linked_ms = None
+        if client["client_id"] in ms_by_client and random.random() < 0.3:
+            linked_ms = random.choice(ms_by_client[client["client_id"]])
+        
         total = float(random.randint(1000, 5000))
         
         orders.append({
-            "order_id": order_id,
-            "client_ref_no": client["client_ref_no"],
-            "s_no": i + 1,
+            "order_id": f"ORD-SEED-{i:03d}",
+            "reference_id": f"REF-S{i:04d}",  # Unique per order, created by users
+            "client_ref_no": client.get("client_ref_no"),  # Optional, from client
+            "s_no": i,
             "order_date": datetime.utcnow() - timedelta(days=20),
             "client_id": client["client_id"],
-            "manuscript_id": ms["manuscript_id"],
-            "order_type": ms["order_type"],
+            "manuscript_id": linked_ms["manuscript_id"] if linked_ms else None,
+            "journal_name": linked_ms.get("journal_name") if linked_ms else random.choice(journal_names),
+            "title": linked_ms["title"] if linked_ms else random.choice(paper_titles),
+            "order_type": linked_ms["order_type"] if linked_ms else random.choice(["Original", "Modification", "Proofreading"]),
             "index": random.choice(["Q1", "Q2", "Q3"]),
             "rank": random.choice(["A", "B"]),
             "currency": "USD",
@@ -119,7 +154,6 @@ def seed_orders(clients, manuscripts):
             "modification_amount": total * 0.2,
             "po_amount": total * 0.2,
             "payment_status": random.choice(["Pending", "Partial", "Paid"]),
-            "assigned_to": client["client_handler"],
             "remarks": "Priority Seeding Data",
             "created_at": datetime.utcnow() - timedelta(days=20),
             "updated_at": datetime.utcnow()
@@ -146,7 +180,8 @@ def seed_payments(orders):
         phase_1_amt = order["total_amount"] * 0.4
         
         payments.append({
-            "client_ref_number": order["client_ref_no"],
+            "client_ref_number": order.get("client_ref_no"),
+            "reference_id": order.get("reference_id"),  # Copied from order
             "client_id": order["client_id"],
             "order_id": order["order_id"],
             "phase": 1,
@@ -165,7 +200,8 @@ def seed_payments(orders):
                 amt = order["total_amount"] * 0.3
                 p_date = pay_date + timedelta(days=phase * 5)
                 payments.append({
-                    "client_ref_number": order["client_ref_no"],
+                    "client_ref_number": order.get("client_ref_no"),
+                    "reference_id": order.get("reference_id"),  # Copied from order
                     "client_id": order["client_id"],
                     "order_id": order["order_id"],
                     "phase": phase,

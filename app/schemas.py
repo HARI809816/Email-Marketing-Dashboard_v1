@@ -26,6 +26,7 @@ class AdminPasswordUpdate(BaseModel):
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
+    profile_name: Optional[str] = None  # New field for user profile management
     role: UserRole = UserRole.EMPLOYEE
     phone_number: Optional[str] = None
     permissions: Optional[dict[str, list[str]]] = Field(default_factory=lambda: {"dashboard": []})
@@ -91,6 +92,9 @@ class ClientBase(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     affiliation: Optional[str] = None
+    clients_details: Optional[str] = None  # New field for detailed client information
+    client_drive_link: Optional[str] = None  # New field for client drive link
+    payment_drive_link: Optional[str] = None  # New field - SOURCE for orders payment_drive_link
     total_orders: int = 0
     client_handler: Optional[str] = None # Ref to User full name
 
@@ -124,9 +128,9 @@ class ClientAssignRequest(BaseModel):
 class ManuscriptBase(BaseModel):
     manuscript_id: str
     title: str
+    journal_name: Optional[str] = None  # Target journal name
     order_type: Optional[str] = None
-    client_id: str # Ref to Client ObjectId string
-    client_ref_no: Optional[str] = None
+    client_id: str # Ref to Client
 
 class ManuscriptCreate(ManuscriptBase):
     pass
@@ -139,11 +143,14 @@ class ManuscriptResponse(ManuscriptBase):
 
 class OrderBase(BaseModel):
     order_id: str
-    client_ref_no: Optional[str] = None
+    reference_id: str  # Unique per order — created by users (employees/admins)
+    client_ref_no: Optional[str] = None  # Optional — given by the client
     s_no: Optional[int] = None
     order_date: datetime = Field(default_factory=datetime.utcnow)
     client_id: str # Ref to Client
-    manuscript_id: str # Ref to Manuscript
+    manuscript_id: Optional[str] = None  # Optional — only ~30% of clients provide manuscripts
+    journal_name: Optional[str] = None  # Target journal name
+    title: Optional[str] = None  # Paper title
     order_type: Optional[str] = None
     index: Optional[str] = None
     rank: Optional[str] = None
@@ -159,7 +166,6 @@ class OrderBase(BaseModel):
     po_start_date: Optional[datetime] = None
     po_end_date: Optional[datetime] = None
     payment_status: str = "Pending"
-    assigned_to: Optional[str] = None
     remarks: Optional[str] = None
 
 class OrderCreate(OrderBase):
@@ -174,6 +180,7 @@ class OrderResponse(OrderBase):
 
 class PaymentBase(BaseModel):
     client_ref_number: Optional[str] = None
+    reference_id: Optional[str] = None  # Copied from order for easy lookup
     client_id: str # Ref to Client
     phase: int = 1
     amount: float = 0.0
@@ -203,8 +210,11 @@ class DashboardOrderResponse(BaseModel):
     client_country: Optional[str] = None
     client_Email: Optional[str] = None
     client_whatsapp_number: Optional[str] = None
+    reference_id: Optional[str] = None
     ref_no: Optional[str] = None
     manuscript_id: Optional[str] = None
+    journal_name: Optional[str] = None
+    title: Optional[str] = None
     order_type: Optional[str] = None
     index: Optional[str] = None
     rank: Optional[str] = None
@@ -243,7 +253,10 @@ class DashboardUpdate(BaseModel):
     
     # ORDER FIELDS
     order_date: Optional[datetime] = None
+    reference_id: Optional[str] = None
     ref_no: Optional[str] = None
+    journal_name: Optional[str] = None
+    title: Optional[str] = None
     order_type: Optional[str] = None
     index: Optional[str] = None
     rank: Optional[str] = None
@@ -268,3 +281,48 @@ class DashboardUpdate(BaseModel):
     phase_2_payment_date: Optional[datetime] = None
     phase_3_payment: Optional[float] = None
     phase_3_payment_date: Optional[datetime] = None
+
+# --- UNIFIED CREATE API SCHEMA ---
+
+class UnifiedCreateRequest(BaseModel):
+    """Unified schema for creating client, order, manuscript, and payment records in one API call"""
+
+    # Client fields
+    client_id: str
+    client_name: str
+    client_country: Optional[str] = None
+    client_email: Optional[EmailStr] = None
+    client_whatsapp_no: Optional[str] = None
+    client_ref_no: Optional[str] = None
+    client_link: Optional[str] = None
+    client_bank_account: Optional[str] = None
+    client_affiliation: Optional[str] = None
+    clients_details: Optional[str] = None  # New field for detailed client information
+    client_drive_link: Optional[str] = None  # New field for client drive link
+    payment_drive_link: Optional[str] = None  # New field - stored in client, copied to orders
+
+    # Order fields
+    order_date: Optional[str] = None
+    reference_id: str
+    profile_name: str  # From user profile
+    title: str
+    order_type: str  # writing | modification | proofreading
+    index: str  # SCI | Scopus | ESCI
+    rank: str  # Q1 | Q2 | Q3 | Q4
+    journal_name: str
+    write_start_date: Optional[str] = None
+    profile_start_date: Optional[str] = None
+    currency: str  # USD | INR
+    payment_status: str  # pending | partial | paid
+
+    # Optional manuscript fields
+    create_manuscript: bool = False
+    manuscript_title: Optional[str] = None
+    manuscript_journal_name: Optional[str] = None
+
+    # Optional payment fields
+    create_payment: bool = False
+    payment_amount: Optional[float] = None
+    payment_phase: Optional[int] = None
+    payment_date: Optional[str] = None
+    payment_received_account: Optional[str] = None

@@ -12,5 +12,6 @@ dependencies = [
     "pymongo>=4.16.0",
     "python-dotenv>=1.2.2",
     "python-jose[cryptography]>=3.5.0",
+    "requests>=2.33.1",
     "uvicorn>=0.44.0",
 ]

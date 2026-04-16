@@ -4,7 +4,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
-from schemas import (
+from app.schemas import (
     UserCreate, 
     UserResponse, 
     UserDetailResponse,
@@ -27,19 +27,20 @@ from schemas import (
     PermissionUpdate,
     DashboardUpdate,
     ApiResponse,
-    ClientAssignRequest
+    ClientAssignRequest,
+    UnifiedCreateRequest
 )
 import random
 import smtplib
 from email.message import EmailMessage
-from config import (
+from app.config import (
     SMTP_SERVER, 
     SMTP_PORT, 
     SMTP_USERNAME, 
     SMTP_PASSWORD, 
     EMAIL_FROM
 )
-from auth import (
+from app.auth import (
     get_password_hash,
     verify_password,
     create_access_token,
@@ -47,7 +48,7 @@ from auth import (
     require_admin,
     require_manager_or_higher
 )
-from database import (
+from app.database import (
     users_collection, 
     tokens_collection,
     clients_collection,
@@ -56,7 +57,7 @@ from database import (
     payments_collection,
     otps_collection
 )
-from bson import ObjectId
+# from bson import ObjectId
 
 app = FastAPI(title="Email Dashboard API")
 
@@ -114,6 +115,11 @@ def send_otp_email(to_email: str, otp: str):
     msg["Subject"] = "Login OTP - Email Dashboard"
     msg["From"] = EMAIL_FROM
     msg["To"] = to_email
+
+    # DEBUG: Print OTP for testing purposes
+    print(f"\n🔐 [TEST OTP] For email {to_email}: {otp}")
+    print("⚠️  This OTP is printed for testing only!\n")
+
     print(f"\n[OTP DEBUG] Attempting to send email to {to_email} via {SMTP_SERVER}:{SMTP_PORT}\n")
     try:
         if SMTP_PORT == 465:
@@ -315,6 +321,33 @@ def create_user(user: UserCreate, current_user: dict = Depends(require_manager_o
         "status_code": 201,
         "status": "success",
         "message": "User created successfully",
+        "data": user_dict
+    }
+
+@app.post("/managers", response_model=ApiResponse[UserResponse], status_code=status.HTTP_201_CREATED)
+def create_manager(user: UserCreate, current_user: dict = Depends(require_admin)):
+    """
+    Create a new Manager.
+    Restricted to Admin only.
+    """
+    # Check if user already exists
+    if users_collection.find_one({"email": user.email}):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Email already registered"
+        )
+    
+    # Enforce role to be Manager
+    user_dict = user.model_dump()
+    user_dict["role"] = UserRole.MANAGER
+    user_dict["password"] = get_password_hash(user.password)
+    result = users_collection.insert_one(user_dict)
+    
+    user_dict["_id"] = str(result.inserted_id)
+    return {
+        "status_code": 201,
+        "status": "success",
+        "message": "Manager created successfully",
         "data": user_dict
     }
 
@@ -699,11 +732,18 @@ def get_manuscripts(current_user: dict = Depends(get_current_user)):
 
 @app.post("/orders", response_model=ApiResponse[OrderResponse], status_code=status.HTTP_201_CREATED)
 def create_order(order: OrderCreate, current_user: dict = Depends(require_manager_or_higher)):
-    # Verify client and manuscript exist
+    # Verify client exists
     if not clients_collection.find_one({"client_id": order.client_id}):
         raise HTTPException(status_code=400, detail="Invalid client_id")
-    if not manuscripts_collection.find_one({"manuscript_id": order.manuscript_id}):
-        raise HTTPException(status_code=400, detail="Invalid manuscript_id")
+    
+    # Manuscript is optional — only validate if provided
+    if order.manuscript_id:
+        if not manuscripts_collection.find_one({"manuscript_id": order.manuscript_id}):
+            raise HTTPException(status_code=400, detail="Invalid manuscript_id")
+    
+    # Ensure reference_id is unique across all orders
+    if orders_collection.find_one({"reference_id": order.reference_id}):
+        raise HTTPException(status_code=400, detail="This reference ID already exists")
     
     order_dict = order.model_dump()
     order_dict["created_at"] = datetime.utcnow()
@@ -821,8 +861,11 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "client_country": "$country",
                 "client_Email": "$email",
                 "client_whatsapp_number": "$whatsapp_no",
+                "reference_id": "$order.reference_id",
                 "ref_no": {"$ifNull": ["$order.client_ref_no", "$client_ref_no"]},
                 "manuscript_id": "$order.manuscript_id",
+                "journal_name": "$order.journal_name",
+                "title": "$order.title",
                 "order_type": "$order.order_type",
                 "index": "$order.index",
                 "rank": "$order.rank",
@@ -890,7 +933,7 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
 
     # 2. Map fields to collections
     client_fields = ["client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
-    order_fields = ["order_date", "ref_no", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
+    order_fields = ["order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
     payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date"]
 
     # Get the order to find linked client
@@ -958,5 +1001,169 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
         "status": "success",
         "message": "Dashboard order updated successfully",
         "data": None
+    }
+
+# --- UNIFIED CREATE API ---
+
+@app.post("/unified/create", response_model=ApiResponse[dict], status_code=status.HTTP_201_CREATED)
+def create_unified_record(request: UnifiedCreateRequest, current_user: dict = Depends(require_manager_or_higher)):
+    """
+    Unified API to create client, order, manuscript, and payment records in one request.
+    Handles relationships and data consistency automatically.
+
+    Features:
+    - Creates client if doesn't exist, updates if exists
+    - Always creates order with unique reference_id
+    - Optionally creates manuscript linked to client and order
+    - Optionally creates payment record
+    - payment_drive_link flows from client to order automatically
+    """
+
+    # Step 1: Handle Client Creation/Update
+    existing_client = clients_collection.find_one({"client_id": request.client_id})
+
+    if not existing_client:
+        # Create new client
+        client_data = {
+            "client_id": request.client_id,
+            "name": request.client_name,
+            "country": request.client_country,
+            "email": request.client_email,
+            "whatsapp_no": request.client_whatsapp_no,
+            "client_ref_no": request.client_ref_no,
+            "client_link": request.client_link,
+            "bank_account": request.client_bank_account,
+            "affiliation": request.client_affiliation,
+            "clients_details": request.clients_details,
+            "client_drive_link": request.client_drive_link,
+            "payment_drive_link": request.payment_drive_link,  # Store in client as source
+            "total_orders": 0,
+            "client_handler": current_user.get("full_name") if current_user["role"] == UserRole.EMPLOYEE else None,
+            "created_at": datetime.utcnow()
+        }
+        clients_collection.insert_one(client_data)
+        client_id = request.client_id
+        client_payment_drive_link = request.payment_drive_link
+    else:
+        # Use existing client, do not update fields
+        client_id = existing_client["client_id"]
+        
+        # Get the current payment_drive_link from existing client
+        client_payment_drive_link = existing_client.get("payment_drive_link")
+
+    # Step 2: Create Manuscript (Optional)
+    manuscript_id = None
+    if request.create_manuscript and request.manuscript_title:
+        manuscript_data = {
+            "manuscript_id": f"MS-{client_id}-{request.reference_id}",
+            "title": request.manuscript_title,
+            "journal_name": request.manuscript_journal_name or request.journal_name,
+            "order_type": request.order_type,
+            "client_id": client_id,
+            "created_at": datetime.utcnow()
+        }
+        manuscripts_collection.insert_one(manuscript_data)
+        manuscript_id = manuscript_data["manuscript_id"]
+
+    # Step 3: Create Order
+    # Generate unique order_id
+    order_count = orders_collection.count_documents({"client_id": client_id}) + 1
+    order_id = f"ORD-{datetime.utcnow().strftime('%Y')}-{order_count:03d}"
+
+    # Ensure reference_id is unique
+    if orders_collection.find_one({"reference_id": request.reference_id}):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Reference ID '{request.reference_id}' already exists"
+        )
+
+    order_data = {
+        "order_id": order_id,
+        "reference_id": request.reference_id,
+        "client_ref_no": request.client_ref_no,
+        "s_no": order_count,
+        "order_date": request.order_date,
+        "client_id": client_id,
+        "manuscript_id": manuscript_id,
+        "journal_name": request.journal_name,
+        "title": request.title,
+        "order_type": request.order_type,
+        "index": request.index,
+        "rank": request.rank,
+        "currency": request.currency,
+        "total_amount": 0,  # Will be updated if payment is created
+        "writing_amount": 0,
+        "modification_amount": 0,
+        "po_amount": 0,
+        "writing_start_date": request.write_start_date,
+        "writing_end_date": None,
+        "modification_start_date": None,
+        "modification_end_date": None,
+        "po_start_date": None,
+        "po_end_date": None,
+        "payment_status": request.payment_status,
+        "payment_drive_link": client_payment_drive_link,  # From client's payment_drive_link
+        "remarks": f"Created via unified API by {current_user.get('full_name')}",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    orders_collection.insert_one(order_data)
+
+    # Step 4: Create Payment (Optional)
+    payment_created = False
+    if request.create_payment and request.payment_amount:
+        payment_data = {
+            "client_ref_number": request.client_ref_no,
+            "reference_id": request.reference_id,
+            "client_id": client_id,
+            "order_id": order_id,
+            "phase": request.payment_phase or 1,
+            "amount": request.payment_amount,
+            "payment_received_account": request.payment_received_account,
+            "payment_date": request.payment_date or datetime.utcnow().date().isoformat(),
+            "status": "paid",
+            "created_at": datetime.utcnow()
+        }
+
+        # Update phase-specific fields
+        phase = payment_data["phase"]
+        payment_data[f"phase_{phase}_payment"] = request.payment_amount
+        payment_data[f"phase_{phase}_payment_date"] = payment_data["payment_date"]
+
+        payments_collection.insert_one(payment_data)
+
+        # Update order total_amount
+        orders_collection.update_one(
+            {"order_id": order_id},
+            {"$set": {"total_amount": request.payment_amount}}
+        )
+        payment_created = True
+
+    # Step 5: Update Client Order Count
+    clients_collection.update_one(
+        {"client_id": client_id},
+        {"$inc": {"total_orders": 1}}
+    )
+
+    # Return comprehensive response
+    return {
+        "status_code": 201,
+        "status": "success",
+        "message": "Unified record created successfully",
+        "data": {
+            "client_id": client_id,
+            "order_id": order_id,
+            "reference_id": request.reference_id,
+            "manuscript_id": manuscript_id,
+            "payment_created": payment_created,
+            "client_created": existing_client is None,
+            "created_records": {
+                "client": existing_client is None,
+                "order": True,
+                "manuscript": request.create_manuscript,
+                "payment": payment_created
+            },
+            "payment_drive_link_used": client_payment_drive_link
+        }
     }
 
