@@ -26,13 +26,21 @@ class AdminPasswordUpdate(BaseModel):
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
-    profile_name: Optional[str] = None  # New field for user profile management
+    profile_names: list[str] = Field(default_factory=list)  # Employees can maintain multiple profiles
     role: UserRole = UserRole.EMPLOYEE
     phone_number: Optional[str] = None
     permissions: Optional[dict[str, list[str]]] = Field(default_factory=lambda: {"dashboard": []})
+    branch: Optional[str] = None
 
 class UserCreate(UserBase):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone_number: Optional[str] = None
+    branch: Optional[str] = None
+    profile_name: Optional[str] = None
     password: str
+    permissions: Optional[dict[str, list[str]]] = Field(default_factory=lambda: {"dashboard": []})
+    role: UserRole = UserRole.MANAGER
 
 class PermissionUpdate(BaseModel):
     email: EmailStr
@@ -144,6 +152,7 @@ class ManuscriptResponse(ManuscriptBase):
 class OrderBase(BaseModel):
     order_id: str
     reference_id: str  # Unique per order — created by users (employees/admins)
+    profile_name: Optional[str] = None # The specific profile used to handle this order
     client_ref_no: Optional[str] = None  # Optional — given by the client
     s_no: Optional[int] = None
     order_date: datetime = Field(default_factory=datetime.utcnow)

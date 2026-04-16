@@ -1080,6 +1080,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
     order_data = {
         "order_id": order_id,
         "reference_id": request.reference_id,
+        "profile_name": request.profile_name,
         "client_ref_no": request.client_ref_no,
         "s_no": order_count,
         "order_date": request.order_date,
