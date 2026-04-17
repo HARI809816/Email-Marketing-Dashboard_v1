@@ -41,7 +41,8 @@ from app.config import (
     EMAIL_FROM
 )
 from app.auth import (
-    get_password_hash,
+    encrypt_password,
+    decrypt_password,
     verify_password,
     create_access_token,
     get_current_user,
@@ -169,7 +170,7 @@ def init_super_admin(user: UserCreate):
         )
     
     user_dict = user.model_dump()
-    user_dict["password"] = get_password_hash(user.password)
+    user_dict["password"] = encrypt_password(user.password)
     user_dict["role"] = UserRole.ADMIN
     users_collection.insert_one(user_dict)
     
@@ -313,7 +314,7 @@ def create_user(user: UserCreate, current_user: dict = Depends(require_manager_o
             )
             
     user_dict = user.model_dump()
-    user_dict["password"] = get_password_hash(user.password)
+    user_dict["password"] = encrypt_password(user.password)
     result = users_collection.insert_one(user_dict)
     
     user_dict["_id"] = str(result.inserted_id)
@@ -340,7 +341,7 @@ def create_manager(user: UserCreate, current_user: dict = Depends(require_admin)
     # Enforce role to be Manager
     user_dict = user.model_dump()
     user_dict["role"] = UserRole.MANAGER
-    user_dict["password"] = get_password_hash(user.password)
+    user_dict["password"] = encrypt_password(user.password)
     result = users_collection.insert_one(user_dict)
     
     user_dict["_id"] = str(result.inserted_id)
@@ -358,7 +359,7 @@ def update_own_password(data: PasswordUpdate, current_user: dict = Depends(get_c
     """
     Update own password. Available to all roles.
     """
-    hashed_password = get_password_hash(data.new_password)
+    hashed_password = encrypt_password(data.new_password)
     users_collection.update_one(
         {"email": current_user["email"]},
         {"$set": {"password": hashed_password}}
@@ -397,7 +398,7 @@ def update_user_password(data: AdminPasswordUpdate, current_user: dict = Depends
                 detail="Admins cannot change other Admin passwords"
             )
 
-    hashed_password = get_password_hash(data.new_password)
+    hashed_password = encrypt_password(data.new_password)
     users_collection.update_one(
         {"email": data.email},
         {"$set": {"password": hashed_password}}
@@ -419,6 +420,7 @@ def get_all_users(current_user: dict = Depends(require_manager_or_higher)):
     users = list(users_collection.find({"role": UserRole.EMPLOYEE}))
     for u in users:
         u["_id"] = str(u["_id"])
+        u["password"] = decrypt_password(u.get("password", ""))
     return {
         "status_code": 200,
         "status": "success",
@@ -434,6 +436,7 @@ def get_all_admins(current_user: dict = Depends(require_admin)):
     admins = list(users_collection.find({"role": {"$in": [UserRole.MANAGER, UserRole.ADMIN]}}))
     for a in admins:
         a["_id"] = str(a["_id"])
+        a["password"] = decrypt_password(a.get("password", ""))
     return {
         "status_code": 200,
         "status": "success",

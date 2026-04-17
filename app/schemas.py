@@ -48,6 +48,7 @@ class PermissionUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: str = Field(..., alias="_id")
+    password: Optional[str] = None
 
     class Config:
         populate_by_name = True

@@ -1,29 +1,42 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+from cryptography.fernet import Fernet
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from app.database import users_collection
 from app.schemas import TokenData, UserRole
-from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, ENCRYPTION_KEY
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+fernet = Fernet(ENCRYPTION_KEY.encode('utf-8')) if ENCRYPTION_KEY else None
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-def verify_password(plain_password, stored_password):
-    """
-    Verify password - handles both hashed passwords and plaintext (for testing)
-    """
-    # First try to verify as bcrypt hash
-    try:
-        return pwd_context.verify(plain_password, stored_password)
-    except:
-        # If that fails, check if it's plaintext (for testing)
-        return plain_password == stored_password
+def encrypt_password(plain_password: str) -> str:
+    if not fernet:
+        raise Exception("ENCRYPTION_KEY not set in environment or config")
+    return fernet.encrypt(plain_password.encode('utf-8')).decode('utf-8')
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def decrypt_password(encrypted_password: str) -> str:
+    if not fernet:
+        return "ERROR: KEY MISSING"
+    if not encrypted_password:
+        return ""
+    try:
+        return fernet.decrypt(encrypted_password.encode('utf-8')).decode('utf-8')
+    except Exception:
+        return "DECRYPTION_FAILED"
+
+def verify_password(plain_password: str, stored_password: str) -> bool:
+    # First try to see if it's plaintext (fallback testing)
+    if plain_password == stored_password:
+        return True
+    
+    # If not, try decrypting the stored password
+    decrypted = decrypt_password(stored_password)
+    if decrypted == "DECRYPTION_FAILED":
+        return False
+        
+    return decrypted == plain_password
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()

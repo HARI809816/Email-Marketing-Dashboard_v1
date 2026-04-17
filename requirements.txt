@@ -1,6 +1,6 @@
 bcrypt<4.0.0
 fastapi
-passlib[bcrypt]>=1.7.4
+cryptography>=41.0.0
 pydantic[email]>=2.12.5
 pymongo>=4.16.0
 python-dotenv>=1.2.2
