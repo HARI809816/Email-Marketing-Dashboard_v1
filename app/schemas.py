@@ -312,6 +312,7 @@ class UnifiedCreateRequest(BaseModel):
     payment_drive_link: Optional[str] = None  # New field - stored in client, copied to orders
 
     # Order fields
+    client_handler: Optional[str] = None  # For admin/manager to assign a handler
     order_date: Optional[str] = None
     reference_id: str
     profile_name: str  # From user profile
