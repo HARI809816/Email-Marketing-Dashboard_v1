@@ -1041,7 +1041,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "client_drive_link": request.client_drive_link,
             "payment_drive_link": request.payment_drive_link,  # Store in client as source
             "total_orders": 0,
-            "client_handler": current_user.get("full_name") if current_user["role"] == UserRole.EMPLOYEE else None,
+            "client_handler": current_user.get("full_name") if current_user["role"] == UserRole.EMPLOYEE else request.client_handler,
             "created_at": datetime.utcnow()
         }
         clients_collection.insert_one(client_data)
