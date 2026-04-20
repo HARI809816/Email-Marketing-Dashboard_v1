@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, Generic, TypeVar, Any
 from enum import Enum
 from datetime import datetime
@@ -258,6 +258,19 @@ class DashboardOrderResponse(BaseModel):
     client_handler: Optional[str] = None
     client_handler_name: Optional[str] = None
     remarks: Optional[str] = None
+
+    @field_validator(
+        "order_date", "writing_start_date", "writing_end_date", 
+        "modification_start_date", "modification_end_date", 
+        "po_start_date", "po_end_date", 
+        "phase_1_payment_date", "phase_2_payment_date", "phase_3_payment_date", 
+        mode="before"
+    )
+    @classmethod
+    def empty_string_to_none(cls, v: Any) -> Any:
+        if v == "":
+            return None
+        return v
 
 class DashboardUpdate(BaseModel):
     # CLIENT FIELDS
