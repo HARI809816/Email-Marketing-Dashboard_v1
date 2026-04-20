@@ -1044,10 +1044,10 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
 # --- UNIFIED CREATE API ---
 
 @app.post("/unified/create", response_model=ApiResponse[dict], status_code=status.HTTP_201_CREATED)
-def create_unified_record(request: UnifiedCreateRequest, current_user: dict = Depends(require_manager_or_higher)):
+def create_unified_record(request: UnifiedCreateRequest, current_user: dict = Depends(get_current_user)):
     """
     Unified API to create client, order, manuscript, and payment records in one request.
-    Handles relationships and data consistency automatically.
+    Accessible to all roles (Employee, Manager, Admin).
 
     Features:
     - Creates client if doesn't exist, updates if exists
