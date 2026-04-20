@@ -261,7 +261,8 @@ class DashboardOrderResponse(BaseModel):
 
 class DashboardUpdate(BaseModel):
     # CLIENT FIELDS
-    client_location: Optional[str] = None
+    client_id: Optional[str] = None
+    client_country: Optional[str] = None
     client_Email: Optional[EmailStr] = None
     client_whatsapp_number: Optional[str] = None
     client_link: Optional[str] = None
@@ -269,6 +270,7 @@ class DashboardUpdate(BaseModel):
     client_affiliations: Optional[str] = None
     
     # ORDER FIELDS
+    manuscript_id: Optional[str] = None
     order_date: Optional[datetime] = None
     reference_id: Optional[str] = None
     ref_no: Optional[str] = None

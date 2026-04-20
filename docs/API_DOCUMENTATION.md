@@ -92,7 +92,7 @@ Most endpoints require a Bearer Token in the `Authorization` header.
 ### Update Dashboard Order
 - **URL**: `/dashboard/orders/{order_db_id}`
 - **Method**: `PATCH`
-- **Description**: #### Editable Dashboard
-- All users (Admin, Manager, Employee) can update any column on the dashboard.
-- Update operations are performed using the Order's database ID (**`order_db_id`**).
-- Employees are logically restricted to editing only their **assigned clients** and their related orders/payments.
+- **Description**: Updates client, order, or payment data in a unified way. 
+- **Relational Integrity**: If `client_id` is updated, the change is automatically rippled to all related orders, manuscripts, and payments.
+- **Shared Fields**: Fields like `Country` and `Email` are client-level; updating them for one row updates them for all rows of that client.
+- **Roles**: All. All users can update all dashboard fields for clients they have access to.

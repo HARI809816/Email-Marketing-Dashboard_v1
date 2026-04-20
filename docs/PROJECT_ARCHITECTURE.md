@@ -459,6 +459,8 @@ Client                          FastAPI Server              MongoDB
 #### Editable Dashboard
 - All users (Admin, Manager, Employee) can update any column on the dashboard.
 - Update operations are performed using the Order's database ID (**`order_db_id`**).
+- **Client Identification**: Updating a `client_id` for an order will automatically synchronize the change across all related collections (Orders, Payments, Manuscripts).
+- **Data Normalization**: Fields like `Country` and `Email` belong to the Client document. Updating them for one order updates them for all orders belonging to that client.
 - Employees are logically restricted to editing only their **assigned clients** and their related orders/payments.
 
 ---

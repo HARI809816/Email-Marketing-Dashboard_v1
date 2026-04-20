@@ -953,8 +953,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         }
 
     # 2. Map fields to collections
-    client_fields = ["client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
-    order_fields = ["order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
+    client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
+    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
     payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date"]
 
     # Get the order to verify it exists and find linked client
@@ -966,17 +966,21 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
-    client_id = order["client_id"]
+    old_client_id = order["client_id"]
     order_custom_id = order["order_id"] # Internal ORD-xxx string
 
     # 3. Perform Updates
     
-    # Update Clients
+    # Update Clients & Handle client_id change
     client_updates = {f: update_dict[f] for f in client_fields if f in update_dict}
     if client_updates:
+        # Check if client_id itself is changing
+        new_client_id = client_updates.get("client_id")
+        
         # Map dashboard field names back to client collection names
         mapped_client_updates = {}
         mapping = {
+            "client_id": "client_id",
             "client_country": "country",
             "client_Email": "email",
             "client_whatsapp_number": "whatsapp_no",
@@ -986,7 +990,17 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         }
         for k, v in client_updates.items():
             mapped_client_updates[mapping.get(k, k)] = v
-        clients_collection.update_one({"client_id": client_id}, {"$set": mapped_client_updates})
+
+        # Update the client record
+        clients_collection.update_one({"client_id": old_client_id}, {"$set": mapped_client_updates})
+
+        # If client_id changed, ripple to all related collections
+        if new_client_id and new_client_id != old_client_id:
+            orders_collection.update_many({"client_id": old_client_id}, {"$set": {"client_id": new_client_id}})
+            payments_collection.update_many({"client_id": old_client_id}, {"$set": {"client_id": new_client_id}})
+            manuscripts_collection.update_many({"client_id": old_client_id}, {"$set": {"client_id": new_client_id}})
+            # Update local variable for subsequent order updates in this same request
+            old_client_id = new_client_id
 
     # Update Orders
     order_updates = {f: update_dict[f] for f in order_fields if f in update_dict}
