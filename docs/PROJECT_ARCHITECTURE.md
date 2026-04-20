@@ -458,7 +458,7 @@ Client                          FastAPI Server              MongoDB
 
 #### Editable Dashboard
 - All users (Admin, Manager, Employee) can update any column on the dashboard.
-- Update operations are performed using the custom **`order_id`** (e.g., `ORD-2024-001`).
+- Update operations are performed using the Order's database ID (**`order_db_id`**).
 - Employees are logically restricted to editing only their **assigned clients** and their related orders/payments.
 
 ---
@@ -561,7 +561,7 @@ Response: 200 OK
 
 #### 4. Update Dashboard Row
 ```
-PATCH /dashboard/orders/{order_id}
+PATCH /dashboard/orders/{order_db_id}
 Purpose: Update client, order, or payment info
 Auth: Authenticated users
 Body: { DashboardUpdate fields }

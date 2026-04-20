@@ -91,5 +91,6 @@ The system uses logical IDs for relationships to ensure portability across servi
 |---|---|---|
 | Client | `CLT` + 3 digits | `CLT001` |
 | Order | `ORD` + 3 digits | `ORD001` |
+| Database ID | MongoDB `_id` (Hex) | `65f...456` (Used as `order_db_id` for updates) |
 | Manuscript | `MS-` + ClientID + Seq | `MS-CLT001-1` |
 | Reference | `EM-` + Year + Seq | `EM-2024-001` |

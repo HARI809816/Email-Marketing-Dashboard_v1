@@ -218,6 +218,7 @@ class PaymentResponse(PaymentBase):
 
 class DashboardOrderResponse(BaseModel):
     s_no: Optional[int] = None
+    order_db_id: Optional[str] = None
     order_id: Optional[str] = None
     order_date: Optional[datetime] = None
     client_id: str

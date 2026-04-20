@@ -879,6 +879,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         {
             "$project": {
                 "_id": 0,
+                "order_db_id": {"$toString": "$order._id"},
                 "order_id": "$order.order_id",
                 "s_no": "$order.s_no",
                 "order_date": "$order.order_date",
@@ -935,10 +936,10 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         "data": dashboard_data
     }
 
-@app.patch("/dashboard/orders/{order_id}", response_model=ApiResponse[dict])
-def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_user: dict = Depends(get_current_user)):
+@app.patch("/dashboard/orders/{order_db_id}", response_model=ApiResponse[dict])
+def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, current_user: dict = Depends(get_current_user)):
     """
-    Unified update endpoint for the dashboard using custom order_id.
+    Unified update endpoint for the dashboard using Order Database ID (Hex).
     Updates relevant collections based on provided fields.
     """
     # 1. Map fields to collections
@@ -957,18 +958,23 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
     payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date"]
 
     # Get the order to verify it exists and find linked client
-    order = orders_collection.find_one({"order_id": order_id})
+    try:
+        order = orders_collection.find_one({"_id": ObjectId(order_db_id)})
+    except Exception:
+         raise HTTPException(status_code=400, detail="Invalid order_db_id format")
+         
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
     client_id = order["client_id"]
+    order_custom_id = order["order_id"] # Internal ORD-xxx string
 
     # 3. Perform Updates
     
     # Update Clients
     client_updates = {f: update_dict[f] for f in client_fields if f in update_dict}
     if client_updates:
-        # Map dashboard field names back to client collection names if different
+        # Map dashboard field names back to client collection names
         mapped_client_updates = {}
         mapping = {
             "client_country": "country",
@@ -991,7 +997,7 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
         for k, v in order_updates.items():
             mapped_order_updates[mapping.get(k, k)] = v
         mapped_order_updates["updated_at"] = datetime.utcnow()
-        orders_collection.update_one({"order_id": order_id}, {"$set": mapped_order_updates})
+        orders_collection.update_one({"_id": ObjectId(order_db_id)}, {"$set": mapped_order_updates})
 
     # Update Payments
     payment_updates_raw = {f: update_dict[f] for f in payment_fields if f in update_dict}
@@ -1009,7 +1015,7 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
             
             if p_updates:
                 payments_collection.update_one(
-                    {"order_id": order_id, "phase": phase},
+                    {"order_id": order_custom_id, "phase": phase},
                     {"$set": p_updates},
                     upsert=True # Create if doesn't exist for that phase
                 )

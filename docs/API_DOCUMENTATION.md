@@ -68,6 +68,7 @@ Most endpoints require a Bearer Token in the `Authorization` header.
 ### Clients
 | Entity | ID Type | Example |
 | :--- | :--- | :--- |
+| Order | MongoDB `_id` (Hex) | `65f...456` (Unique, passed as `order_db_id`) |
 | Client | `CLT` + 3 digits | `CLT001` |
 | Order | `ORD` + 3 digits | `ORD001` |
 | Manuscript | `MS-` + ClientID + Seq | `MS-CLT001-1` |
@@ -89,7 +90,9 @@ Most endpoints require a Bearer Token in the `Authorization` header.
 ## 5. Dashboard Data
 
 ### Update Dashboard Order
-- **URL**: `/dashboard/orders/{order_id}`
+- **URL**: `/dashboard/orders/{order_db_id}`
 - **Method**: `PATCH`
-- **Description**: Updates client, order, or payment data in a unified way using the custom `order_id` (e.g., `ORD-2024-001`).
-- **Roles**: All. All users can update all dashboard fields for clients they have access to.
+- **Description**: #### Editable Dashboard
+- All users (Admin, Manager, Employee) can update any column on the dashboard.
+- Update operations are performed using the Order's database ID (**`order_db_id`**).
+- Employees are logically restricted to editing only their **assigned clients** and their related orders/payments.
