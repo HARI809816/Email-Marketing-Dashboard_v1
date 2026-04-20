@@ -218,8 +218,6 @@ class PaymentResponse(PaymentBase):
 
 class DashboardOrderResponse(BaseModel):
     s_no: Optional[int] = None
-    client_db_id: Optional[str] = None  # MongoDB ObjectId hex string
-    order_db_id: Optional[str] = None   # MongoDB ObjectId hex string
     order_date: Optional[datetime] = None
     client_id: str
     client_country: Optional[str] = None

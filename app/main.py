@@ -879,8 +879,6 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         {
             "$project": {
                 "_id": 0,
-                "client_db_id": {"$toString": "$_id"},
-                "order_db_id": {"$toString": "$order._id"},
                 "s_no": "$order.s_no",
                 "order_date": "$order.order_date",
                 "client_id": "$client_id",
@@ -936,10 +934,10 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         "data": dashboard_data
     }
 
-@app.patch("/dashboard/clients/{client_db_id}", response_model=ApiResponse[dict])
-def update_dashboard_client(client_db_id: str, update_data: DashboardUpdate, current_user: dict = Depends(get_current_user)):
+@app.patch("/dashboard/orders/{order_id}", response_model=ApiResponse[dict])
+def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_user: dict = Depends(get_current_user)):
     """
-    Unified update endpoint for the dashboard using Client Database ID.
+    Unified update endpoint for the dashboard using custom order_id.
     Updates relevant collections based on provided fields.
     """
     # 1. Map fields to collections
@@ -957,16 +955,12 @@ def update_dashboard_client(client_db_id: str, update_data: DashboardUpdate, cur
     order_fields = ["order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
     payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date"]
 
-    # Get the client to verify it exists
-    try:
-        client = clients_collection.find_one({"_id": ObjectId(client_db_id)})
-    except Exception:
-         raise HTTPException(status_code=400, detail="Invalid client_db_id format")
-         
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+    # Get the order to verify it exists and find linked client
+    order = orders_collection.find_one({"order_id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
     
-    client_id = client["client_id"]
+    client_id = order["client_id"]
 
     # 3. Perform Updates
     
@@ -985,40 +979,18 @@ def update_dashboard_client(client_db_id: str, update_data: DashboardUpdate, cur
         }
         for k, v in client_updates.items():
             mapped_client_updates[mapping.get(k, k)] = v
-        clients_collection.update_one({"_id": ObjectId(client_db_id)}, {"$set": mapped_client_updates})
+        clients_collection.update_one({"client_id": client_id}, {"$set": mapped_client_updates})
 
     # Update Orders
-    # For orders, we'll try to find the linked order. 
-    # If a specific reference_id or ref_no is provided in the update_dict, we use that.
-    # Otherwise, we update the most recent order for this client.
     order_updates = {f: update_dict[f] for f in order_fields if f in update_dict}
     if order_updates:
-        target_order_query = {"client_id": client_id}
-        if "reference_id" in update_dict:
-            target_order_query["reference_id"] = update_dict["reference_id"]
-        
-        # Map dashboard field names back to order collection names
+        # Map dashboard field names back to order collection names if different
         mapped_order_updates = {}
         mapping = {"ref_no": "client_ref_no"}
         for k, v in order_updates.items():
             mapped_order_updates[mapping.get(k, k)] = v
         mapped_order_updates["updated_at"] = datetime.utcnow()
-        
-        # Update the most recent matching order
-        orders_collection.update_one(
-            target_order_query, 
-            {"$set": mapped_order_updates},
-            sort=[("order_date", -1)]
-        )
-        
-        # Get the order_id for payment updates (need a concrete order)
-        order = orders_collection.find_one(target_order_query, sort=[("order_date", -1)])
-        order_id = order["order_id"] if order else None
-    else:
-        # Even if no order fields are updated, we might have payment updates
-        # Check for the most recent order to link payments
-        order = orders_collection.find_one({"client_id": client_id}, sort=[("order_date", -1)])
-        order_id = order["order_id"] if order else None
+        orders_collection.update_one({"order_id": order_id}, {"$set": mapped_order_updates})
 
     # Update Payments
     payment_updates_raw = {f: update_dict[f] for f in payment_fields if f in update_dict}

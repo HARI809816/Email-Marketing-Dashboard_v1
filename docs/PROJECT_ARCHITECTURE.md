@@ -456,10 +456,10 @@ Client                          FastAPI Server              MongoDB
 | Update Own Password | ✅ | ✅ | ✅ |
 | Update Others' Password | ✅ | ✅ Employees only | ❌ |
 
-#### Unified Dashboard Update
+#### Editable Dashboard
 - All users (Admin, Manager, Employee) can update any column on the dashboard.
-- Update operations are now performed using the **Client's Database `_id`** (ObjectId) for improved data integrity.
-- Employees are logically restricted to editing only their **assigned clients** data.
+- Update operations are performed using the custom **`order_id`** (e.g., `ORD-2024-001`).
+- Employees are logically restricted to editing only their **assigned clients** and their related orders/payments.
 
 ---
 
@@ -559,9 +559,9 @@ Response: 200 OK
 }
 ```
 
-#### 4. Update Dashboard Data
+#### 4. Update Dashboard Row
 ```
-PATCH /dashboard/clients/{client_db_id}
+PATCH /dashboard/orders/{order_id}
 Purpose: Update client, order, or payment info
 Auth: Authenticated users
 Body: { DashboardUpdate fields }
