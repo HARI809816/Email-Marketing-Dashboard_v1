@@ -879,6 +879,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         {
             "$project": {
                 "_id": 0,
+                "order_id": "$order.order_id",
                 "s_no": "$order.s_no",
                 "order_date": "$order.order_date",
                 "client_id": "$client_id",
