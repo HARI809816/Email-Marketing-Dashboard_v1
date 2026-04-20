@@ -107,7 +107,7 @@ clients = [
         "client_drive_link": "https://drive.google.com/clt001",
         "payment_drive_link": "https://drive.google.com/pay001",
         "total_orders": 3,
-        "client_handler": "John Employee",
+        "client_handler": "employee@dashboard.com",
         "created_at": now - timedelta(days=90),
     },
     {
@@ -124,7 +124,7 @@ clients = [
         "client_drive_link": "https://drive.google.com/clt002",
         "payment_drive_link": "https://drive.google.com/pay002",
         "total_orders": 2,
-        "client_handler": "John Employee",
+        "client_handler": "employee@dashboard.com",
         "created_at": now - timedelta(days=60),
     },
     {
@@ -141,7 +141,7 @@ clients = [
         "client_drive_link": "https://drive.google.com/clt003",
         "payment_drive_link": "https://drive.google.com/pay003",
         "total_orders": 1,
-        "client_handler": "John Employee",
+        "client_handler": "employee@dashboard.com",
         "created_at": now - timedelta(days=45),
     },
     {
@@ -158,7 +158,7 @@ clients = [
         "client_drive_link": "https://drive.google.com/clt004",
         "payment_drive_link": "https://drive.google.com/pay004",
         "total_orders": 1,
-        "client_handler": "John Employee",
+        "client_handler": "employee@dashboard.com",
         "created_at": now - timedelta(days=30),
     },
     {
@@ -175,7 +175,7 @@ clients = [
         "client_drive_link": "https://drive.google.com/clt005",
         "payment_drive_link": "https://drive.google.com/pay005",
         "total_orders": 1,
-        "client_handler": "John Employee",
+        "client_handler": "employee@dashboard.com",
         "created_at": now - timedelta(days=15),
     },
 ]

@@ -43,27 +43,27 @@ The system serves as a centralized platform for:
 ## Technology Stack
 
 ### Backend Framework
-- **FastAPI** (v0.135.3+): Modern, fast ASGI web framework for building REST APIs
-- **Python** (3.14+): Core programming language
-- **Uvicorn** (v0.44.0+): ASGI server for running FastAPI applications
+- **FastAPI**: Modern, fast ASGI web framework for building REST APIs
+- **Python** (3.11+): Core programming language
+- **Uvicorn**: ASGI server for running FastAPI applications
 
 ### Database
-- **MongoDB** (4.16.0+): NoSQL database for flexible, document-based data storage
-- **PyMongo** (4.16.0+): Python MongoDB driver for database connectivity
+- **MongoDB**: NoSQL database for flexible, document-based data storage
+- **PyMongo**: Python MongoDB driver for database connectivity
 
 ### Authentication & Security
-- **Python-Jose** (3.5.0+): JWT token creation and verification
-- **Passlib** (1.7.4+) with **bcrypt** (3.x): Password hashing and verification
-- **Cryptography**: Underlying security library for token encryption
+- **Python-Jose**: JWT token creation and verification
+- **Cryptography (Fernet)**: Two-way symmetric encryption for passwords and sensitive data
+- **Bcrypt**: Legacy support for password hashing (transitioning to Fernet)
 
 ### Utilities
-- **Pydantic** (2.12.5+): Data validation and serialization using Python decorators
-- **Pydantic[email]**: Email validation support
-- **Python-dotenv** (1.2.2+): Environment variable management
+- **Pydantic**: Data validation and serialization
+- **python-dotenv**: Environment variable management
+- **python-docx**: (Newly added) For documentation generation
 
 ### Server Configuration
 - **Uvicorn**: ASGI HTTP server
-- **CORSMiddleware**: Cross-Origin Resource Sharing support for frontend integration
+- **CORSMiddleware**: Cross-Origin Resource Sharing support
 - **GZipMiddleware**: HTTP compression for optimized response sizes
 
 ---
@@ -143,93 +143,30 @@ The system serves as a centralized platform for:
 ```
 Email Dashboard/
 │
-├── main.py                          # FastAPI application entry point
-│   ├── CORS & middleware configuration
-│   ├── Exception handlers
-│   ├── Authentication endpoints (login, OTP verification)
-│   ├── User management endpoints (create, update, password)
-│   ├── Client management endpoints (CRUD, assignment)
-│   ├── Order management endpoints
-│   ├── Payment processing endpoints
-│   └── Dashboard endpoints
+├── app/                             # Core Application Code
+│   ├── main.py                      # Application entry point & endpoints
+│   ├── auth.py                      # JWT & Encryption logic (Fernet)
+│   ├── schemas.py                   # Pydantic data models
+│   ├── database.py                  # MongoDB connection
+│   └── config.py                    # App configuration
 │
-├── auth.py                          # Authentication & authorization logic
-│   ├── Password hashing (bcrypt)
-│   ├── JWT token creation
-│   ├── OAuth2 scheme validation
-│   ├── Current user extraction
-│   ├── require_admin() dependency
-│   └── require_manager_or_higher() dependency
+├── docs/                            # Project Documentation
+│   ├── PROJECT_ARCHITECTURE.md      # This file
+│   ├── DATABASE_DOCUMENTATION.md    # Database schemas
+│   ├── API_DOCUMENTATION.md         # API reference
+│   └── ...                          # Other guides
 │
-├── schemas.py                       # Pydantic models for validation
-│   ├── UserRole enum (admin, manager, employee)
-│   ├── User models (UserCreate, UserResponse, UserDetailResponse)
-│   ├── Authentication models (LoginRequest, LoginResponse, OTPVerifyRequest)
-│   ├── Client models (ClientCreate, ClientResponse)
-│   ├── Order models (OrderCreate, OrderResponse)
-│   ├── Payment models (PaymentCreate, PaymentResponse)
-│   ├── Permission models (PermissionUpdate)
-│   ├── Dashboard models (DashboardUpdate, DashboardStats)
-│   └── ApiResponse[T] generic response wrapper
+├── scripts/                         # Utility Scripts
+│   ├── reset_passwords.py           # Database seeding script
+│   ├── generate_docs.py             # Documentation generator
+│   └── ...
 │
-├── database.py                      # MongoDB connection & collections
-│   ├── MongoClient initialization
-│   ├── Database reference
-│   ├── Collection exports (users, clients, orders, payments, etc.)
-│   └── Collection definitions
+├── tests/                           # Testing Suite
 │
-├── config.py                        # Environment variable management
-│   ├── MONGO_URI
-│   ├── DB_NAME
-│   ├── SECRET_KEY (JWT)
-│   ├── ALGORITHM (JWT algorithm)
-│   ├── ACCESS_TOKEN_EXPIRE_MINUTES
-│   ├── SMTP configuration (server, port, credentials)
-│   └── CORS origins
-│
-├── .env                             # Environment variables (not in git)
-│   ├── MongoDB connection string
-│   ├── JWT secret key
-│   ├── SMTP credentials
-│   └── Database name
-│
-├── pyproject.toml                   # Project metadata & dependencies
-│   ├── Project name & version
-│   ├── Python version requirement
-│   └── Dependency declarations
-│
-├── uv.lock                          # Locked dependency versions
-│
-├── mock_data_generator.py           # Script to generate test data
-│   ├── Fake user generation
-│   ├── Fake client data
-│   ├── Fake order/payment data
-│   └── Database population
-│
-├── seed_data.py                     # Initial database seeding
-│   ├── Super admin creation
-│   ├── Sample user setup
-│   └── Default data initialization
-│
-├── clear_db.py                      # Database cleanup utility
-│   ├── Clears collections (except users/tokens)
-│   ├── Confirmation prompt
-│   └── Preserves user accounts
-│
-├── check_admins.py                  # Admin verification script
-│   ├── Lists all admins in database
-│   ├── Verifies role configurations
-│   └── Debug utility
-│
-├── README.md                        # Quick start guide
-├── database_details.txt             # Database schema documentation
-├── login_system_documentation.txt   # RBAC system details
-├── manual_testing_guide.txt         # API testing instructions
-│
-├── vercel.json                      # Vercel deployment configuration
-├── render.yaml                      # Render deployment configuration
-│
-└── requirements.txt                 # Pip dependencies (legacy)
+├── .env                             # Environment variables
+├── requirements.txt                 # Dependencies
+├── vercel.json                      # Vercel deployment config
+└── render.yaml                      # Render deployment config
 ```
 
 ### File Purposes
@@ -280,8 +217,7 @@ Email Dashboard/
   _id: ObjectId,
   email: "admin@company.com",              // Unique identifier
   full_name: "John Doe",
-  password_hash: "bcrypt_hash...",         // Never send plaintext
-  password: "plain_password",              // Plaintext (testing only)
+  password: "encrypted_string...",          // Two-way encrypted (Fernet)
   role: "admin",                           // admin | manager | employee
   phone_number: "+1234567890",             // Optional
   permissions: {
@@ -515,16 +451,15 @@ Client                          FastAPI Server              MongoDB
 | Create Manager | ✅ | ❌ | ❌ |
 | Create Admin | ✅ Only (max 5) | ❌ | ❌ |
 | View All Clients | ✅ | ✅ | ❌ See own assigned |
-| View All Orders | ✅ | ✅ | ❌ See own assigned |
-| Manage Permissions | ✅ | ✅ | ❌ |
+| Edit Dashboard | ✅ All fields | ✅ All fields | ✅ All fields (assigned clients) |
 | 2FA Required | ✅ Yes | ✅ Yes | ❌ No |
 | Update Own Password | ✅ | ✅ | ✅ |
 | Update Others' Password | ✅ | ✅ Employees only | ❌ |
 
-#### Column-Level Permissions
-- Employees can update only dashboard columns explicitly granted by Admin/Manager
-- Controlled via `users.permissions.dashboard` array
-- Each server response validates if user can modify each field
+#### Unified Dashboard Update
+- All users (Admin, Manager, Employee) can update any column on the dashboard.
+- Update operations are now performed using the **Client's Database `_id`** (ObjectId) for improved data integrity.
+- Employees are logically restricted to editing only their **assigned clients** data.
 
 ---
 
@@ -624,25 +559,12 @@ Response: 200 OK
 }
 ```
 
-#### 4. Get User Details
+#### 4. Update Dashboard Data
 ```
-GET /users/{email}
-Purpose: Get detailed info for specific user
-Auth: Requires Manager+ privileges
-Response: 200 OK
-{
-  "status_code": 200,
-  "data": {
-    "email": "...",
-    "full_name": "...",
-    "handled_clients": [...],
-    "dashboard_stats": {
-      "overall_amount": 50000,
-      "total_clients": 10,
-      ...
-    }
-  }
-}
+PATCH /dashboard/clients/{client_db_id}
+Purpose: Update client, order, or payment info
+Auth: Authenticated users
+Body: { DashboardUpdate fields }
 ```
 
 #### 5. Update Own Password

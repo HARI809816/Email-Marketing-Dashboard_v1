@@ -105,7 +105,8 @@ class ClientBase(BaseModel):
     client_drive_link: Optional[str] = None  # New field for client drive link
     payment_drive_link: Optional[str] = None  # New field - SOURCE for orders payment_drive_link
     total_orders: int = 0
-    client_handler: Optional[str] = None # Ref to User full name
+    client_handler: Optional[str] = None  # Stores employee EMAIL (unique reference)
+    client_handler_name: Optional[str] = None  # Resolved full name for display (not stored in DB)
 
 class ClientCreate(ClientBase):
     pass
@@ -113,6 +114,7 @@ class ClientCreate(ClientBase):
 class ClientResponse(ClientBase):
     id: str = Field(..., alias="_id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    client_handler_name: Optional[str] = None  # Resolved full name
     class Config:
         populate_by_name = True
 
@@ -125,6 +127,7 @@ class ClientDetailResponse(ClientBase):
     paid_amount: float = 0.0
     remaining_amount: float = 0.0
     payment_status: Optional[str] = "No Order"
+    client_handler_name: Optional[str] = None  # Resolved full name
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
@@ -215,6 +218,8 @@ class PaymentResponse(PaymentBase):
 
 class DashboardOrderResponse(BaseModel):
     s_no: Optional[int] = None
+    client_db_id: Optional[str] = None  # MongoDB ObjectId hex string
+    order_db_id: Optional[str] = None   # MongoDB ObjectId hex string
     order_date: Optional[datetime] = None
     client_id: str
     client_country: Optional[str] = None
@@ -250,6 +255,8 @@ class DashboardOrderResponse(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None
+    client_handler: Optional[str] = None
+    client_handler_name: Optional[str] = None
     remarks: Optional[str] = None
 
 class DashboardUpdate(BaseModel):

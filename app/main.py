@@ -58,7 +58,7 @@ from app.database import (
     payments_collection,
     otps_collection
 )
-# from bson import ObjectId
+from bson import ObjectId
 
 app = FastAPI(title="Email Dashboard API")
 
@@ -143,6 +143,20 @@ def format_mongo_id(doc):
     if doc and "_id" in doc:
         doc["_id"] = str(doc["_id"])
     return doc
+
+def resolve_client_handler(client: dict) -> dict:
+    """
+    Resolves client_handler (email) to client_handler_name (full_name) for display.
+    client_handler stores the employee's email for uniqueness.
+    client_handler_name is the human-readable full name shown on the frontend.
+    """
+    handler_email = client.get("client_handler")
+    if handler_email:
+        handler_user = users_collection.find_one({"email": handler_email})
+        client["client_handler_name"] = handler_user.get("full_name") if handler_user else handler_email
+    else:
+        client["client_handler_name"] = None
+    return client
 
 
 @app.get("/", response_model=ApiResponse[dict])
@@ -481,7 +495,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     # 1. Determine client filter
     client_match = {}
     if current_user["role"] not in [UserRole.ADMIN, UserRole.MANAGER]:
-        client_match = {"client_handler": current_user.get("full_name")}
+        client_match = {"client_handler": current_user.get("email")}
 
     # 2. Aggregation Pipeline to fetch clients and their stats in ONE go
     pipeline = [
@@ -536,6 +550,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     for c in clients_with_stats:
         c["_id"] = str(c["_id"])
         c["remaining_amount"] = c["total_amount"] - c["paid_amount"]
+        resolve_client_handler(c)
         
         # Calculate country split for Pie Chart
         country = c.get("country") or "Unknown"
@@ -592,11 +607,14 @@ def get_user_details(email: str, current_user: dict = Depends(require_manager_or
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
         
-    # Find clients handled by this target user
-    clients = list(clients_collection.find({"client_handler": target_user.get("full_name")}))
+    # Find clients handled by this target user (query by unique email)
+    clients = list(clients_collection.find({"client_handler": target_user.get("email")}))
     
     user_data = format_mongo_id(target_user)
-    user_data["handled_clients"] = [format_mongo_id(c) for c in clients]
+    for c in clients:
+        format_mongo_id(c)
+        resolve_client_handler(c)
+    user_data["handled_clients"] = clients
     
     return {
         "status_code": 200,
@@ -615,12 +633,14 @@ def create_client(client: ClientCreate, current_user: dict = Depends(get_current
 
     client_dict = client.model_dump()
     
-    # Dynamic Client Handler logic
+    # Dynamic Client Handler logic — store EMAIL for uniqueness
     if not client_dict.get("client_handler"):
         if current_user["role"] == UserRole.EMPLOYEE:
-            client_dict["client_handler"] = current_user.get("full_name")
+            client_dict["client_handler"] = current_user.get("email")
         else:
             client_dict["client_handler"] = None
+    # Remove display-only field before saving to DB
+    client_dict.pop("client_handler_name", None)
             
     client_dict["created_at"] = datetime.utcnow()
     result = clients_collection.insert_one(client_dict)
@@ -636,13 +656,14 @@ def create_client(client: ClientCreate, current_user: dict = Depends(get_current
 def get_clients(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        query = {"client_handler": current_user.get("full_name")}
+        query = {"client_handler": current_user.get("email")}
     clients = list(clients_collection.find(query))
+    resolved = [resolve_client_handler(format_mongo_id(c)) for c in clients]
     return {
         "status_code": 200,
         "status": "success",
         "message": "Clients fetched successfully",
-        "data": [format_mongo_id(c) for c in clients]
+        "data": resolved
     }
 
 @app.get("/clients/{client_id}", response_model=ApiResponse[ClientResponse])
@@ -654,7 +675,7 @@ def get_client(client_id: str, current_user: dict = Depends(require_manager_or_h
         "status_code": 200,
         "status": "success",
         "message": "Client fetched successfully",
-        "data": format_mongo_id(client)
+        "data": resolve_client_handler(format_mongo_id(client))
     }
 
 @app.post("/clients/assign", response_model=ApiResponse[ClientResponse])
@@ -679,10 +700,10 @@ def assign_client(request: ClientAssignRequest, current_user: dict = Depends(req
             detail=f"Client with ID {request.client_id} not found"
         )
     
-    # 3. Update Client Handler
+    # 3. Update Client Handler — store email for uniqueness
     clients_collection.update_one(
         {"client_id": request.client_id},
-        {"$set": {"client_handler": employee.get("full_name")}}
+        {"$set": {"client_handler": employee.get("email")}}
     )
     
     # Fetch updated client
@@ -692,7 +713,7 @@ def assign_client(request: ClientAssignRequest, current_user: dict = Depends(req
         "status_code": 200,
         "status": "success",
         "message": f"Client {request.client_id} assigned to {employee.get('full_name')}",
-        "data": format_mongo_id(updated_client)
+        "data": resolve_client_handler(format_mongo_id(updated_client))
     }
 
 # --- MANUSCRIPTS ---
@@ -718,8 +739,8 @@ def create_manuscript(manuscript: ManuscriptCreate, current_user: dict = Depends
 def get_manuscripts(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        # Get clients handled by this employee
-        my_clients = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+        # Get clients handled by this employee (filter by unique email)
+        my_clients = list(clients_collection.find({"client_handler": current_user.get("email")}))
         my_client_ids = [c["client_id"] for c in my_clients]
         query = {"client_id": {"$in": my_client_ids}}
         
@@ -764,8 +785,8 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
 def get_orders(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        # Get clients handled by this employee
-        my_clients = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+        # Get clients handled by this employee (filter by unique email)
+        my_clients = list(clients_collection.find({"client_handler": current_user.get("email")}))
         my_client_ids = [c["client_id"] for c in my_clients]
         query = {"client_id": {"$in": my_client_ids}}
         
@@ -799,8 +820,8 @@ def create_payment(payment: PaymentCreate, current_user: dict = Depends(require_
 def get_payments(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        # Get clients handled by this employee
-        my_clients = list(clients_collection.find({"client_handler": current_user.get("full_name")}))
+        # Get clients handled by this employee (filter by unique email)
+        my_clients = list(clients_collection.find({"client_handler": current_user.get("email")}))
         my_client_ids = [c["client_id"] for c in my_clients]
         query = {"client_id": {"$in": my_client_ids}}
         
@@ -824,7 +845,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     # 1. Get filtered clients query
     client_match = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        client_match = {"client_handler": current_user.get("full_name")}
+        client_match = {"client_handler": current_user.get("email")}
         
     # 2. Aggregation Pipeline
     pipeline = [
@@ -858,6 +879,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         {
             "$project": {
                 "_id": 0,
+                "client_db_id": {"$toString": "$_id"},
+                "order_db_id": {"$toString": "$order._id"},
                 "s_no": "$order.s_no",
                 "order_date": "$order.order_date",
                 "client_id": "$client_id",
@@ -894,12 +917,17 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "client_link": "$client_link",
                 "bank_account": "$bank_account",
                 "client_affiliations": "$affiliation",
+                "client_handler": "$client_handler",
                 "remarks": {"$ifNull": ["$order.remarks", "No active orders for this client"]}
             }
         }
     ]
     
     dashboard_data = list(clients_collection.aggregate(pipeline))
+    
+    # Resolve handler names for display
+    for d in dashboard_data:
+        resolve_client_handler(d)
     
     return {
         "status_code": 200,
@@ -908,14 +936,13 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         "data": dashboard_data
     }
 
-@app.patch("/dashboard/orders/{order_id}", response_model=ApiResponse[dict])
-def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_user: dict = Depends(get_current_user)):
+@app.patch("/dashboard/clients/{client_db_id}", response_model=ApiResponse[dict])
+def update_dashboard_client(client_db_id: str, update_data: DashboardUpdate, current_user: dict = Depends(get_current_user)):
     """
-    Unified update endpoint for the dashboard.
-    Checks column-level permissions for Employees.
+    Unified update endpoint for the dashboard using Client Database ID.
     Updates relevant collections based on provided fields.
     """
-    # 1. Permission Check
+    # 1. Map fields to collections
     update_dict = update_data.model_dump(exclude_unset=True)
     if not update_dict:
         return {
@@ -925,26 +952,21 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
             "data": None
         }
 
-    if current_user["role"] == UserRole.EMPLOYEE:
-        allowed = current_user.get("permissions", {}).get("dashboard", [])
-        for field in update_dict.keys():
-            if field not in allowed:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"You do not have permission to update column: {field}"
-                )
-
     # 2. Map fields to collections
     client_fields = ["client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
     order_fields = ["order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
     payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date"]
 
-    # Get the order to find linked client
-    order = orders_collection.find_one({"order_id": order_id})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+    # Get the client to verify it exists
+    try:
+        client = clients_collection.find_one({"_id": ObjectId(client_db_id)})
+    except Exception:
+         raise HTTPException(status_code=400, detail="Invalid client_db_id format")
+         
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
     
-    client_id = order["client_id"]
+    client_id = client["client_id"]
 
     # 3. Perform Updates
     
@@ -963,20 +985,40 @@ def update_dashboard_order(order_id: str, update_data: DashboardUpdate, current_
         }
         for k, v in client_updates.items():
             mapped_client_updates[mapping.get(k, k)] = v
-        clients_collection.update_one({"client_id": client_id}, {"$set": mapped_client_updates})
+        clients_collection.update_one({"_id": ObjectId(client_db_id)}, {"$set": mapped_client_updates})
 
     # Update Orders
+    # For orders, we'll try to find the linked order. 
+    # If a specific reference_id or ref_no is provided in the update_dict, we use that.
+    # Otherwise, we update the most recent order for this client.
     order_updates = {f: update_dict[f] for f in order_fields if f in update_dict}
     if order_updates:
-        # Map dashboard field names back to order collection names if different
+        target_order_query = {"client_id": client_id}
+        if "reference_id" in update_dict:
+            target_order_query["reference_id"] = update_dict["reference_id"]
+        
+        # Map dashboard field names back to order collection names
         mapped_order_updates = {}
-        mapping = {
-            "ref_no": "client_ref_no"
-        }
+        mapping = {"ref_no": "client_ref_no"}
         for k, v in order_updates.items():
             mapped_order_updates[mapping.get(k, k)] = v
         mapped_order_updates["updated_at"] = datetime.utcnow()
-        orders_collection.update_one({"order_id": order_id}, {"$set": mapped_order_updates})
+        
+        # Update the most recent matching order
+        orders_collection.update_one(
+            target_order_query, 
+            {"$set": mapped_order_updates},
+            sort=[("order_date", -1)]
+        )
+        
+        # Get the order_id for payment updates (need a concrete order)
+        order = orders_collection.find_one(target_order_query, sort=[("order_date", -1)])
+        order_id = order["order_id"] if order else None
+    else:
+        # Even if no order fields are updated, we might have payment updates
+        # Check for the most recent order to link payments
+        order = orders_collection.find_one({"client_id": client_id}, sort=[("order_date", -1)])
+        order_id = order["order_id"] if order else None
 
     # Update Payments
     payment_updates_raw = {f: update_dict[f] for f in payment_fields if f in update_dict}
@@ -1041,7 +1083,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "client_drive_link": request.client_drive_link,
             "payment_drive_link": request.payment_drive_link,  # Store in client as source
             "total_orders": 0,
-            "client_handler": current_user.get("full_name") if current_user["role"] == UserRole.EMPLOYEE else request.client_handler,
+            "client_handler": current_user.get("email") if current_user["role"] == UserRole.EMPLOYEE else request.client_handler,
             "created_at": datetime.utcnow()
         }
         clients_collection.insert_one(client_data)
