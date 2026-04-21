@@ -343,7 +343,7 @@ def create_user(user: UserCreate, current_user: dict = Depends(require_manager_o
 def create_manager(user: UserCreate, current_user: dict = Depends(require_manager_or_higher)):
     """
     Create a new Manager.
-    Restricted to Admin only.
+    Restricted to Admin and Manager only.
     """
     # Check if user already exists
     if users_collection.find_one({"email": user.email}):
@@ -1123,8 +1123,13 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
 
     # Step 3: Create Order
     # Generate unique order_id
-    order_count = orders_collection.count_documents({"client_id": client_id}) + 1
-    order_id = f"ORD-{datetime.utcnow().strftime('%Y')}-{order_count:03d}"
+    global_order_count = orders_collection.count_documents({}) + 1
+    order_id = f"ORD-{datetime.utcnow().strftime('%Y')}-{global_order_count:03d}"
+    
+    # Ensure uniqueness in case of deleted documents mapping to same count
+    while orders_collection.find_one({"order_id": order_id}):
+        global_order_count += 1
+        order_id = f"ORD-{datetime.utcnow().strftime('%Y')}-{global_order_count:03d}"
 
     # Ensure reference_id is unique
     if orders_collection.find_one({"reference_id": request.reference_id}):
@@ -1138,7 +1143,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         "reference_id": request.reference_id,
         "profile_name": request.profile_name,
         "client_ref_no": request.client_ref_no,
-        "s_no": order_count,
+        "s_no": global_order_count,
         "order_date": request.order_date,
         "client_id": client_id,
         "manuscript_id": manuscript_id,
