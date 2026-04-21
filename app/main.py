@@ -340,7 +340,7 @@ def create_user(user: UserCreate, current_user: dict = Depends(require_manager_o
     }
 
 @app.post("/managers", response_model=ApiResponse[UserResponse], status_code=status.HTTP_201_CREATED)
-def create_manager(user: UserCreate, current_user: dict = Depends(require_admin)):
+def create_manager(user: UserCreate, current_user: dict = Depends(require_manager_or_higher)):
     """
     Create a new Manager.
     Restricted to Admin only.
