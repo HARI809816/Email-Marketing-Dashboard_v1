@@ -659,11 +659,29 @@ def get_clients(current_user: dict = Depends(get_current_user)):
         query = {"client_handler": current_user.get("email")}
     clients = list(clients_collection.find(query))
     resolved = [resolve_client_handler(format_mongo_id(c)) for c in clients]
+    
+    # Fetch all employees to extract unique profile names and handler names
+    employees = list(users_collection.find({"role": UserRole.EMPLOYEE}))
+    client_handler_names = set()
+    profile_names = set()
+    for emp in employees:
+        if emp.get("full_name"):
+            client_handler_names.add(emp["full_name"])
+        if emp.get("profile_names") and isinstance(emp["profile_names"], list):
+            for p in emp["profile_names"]:
+                profile_names.add(p)
+                
+    detail = {
+        "client_handlers_names": list(client_handler_names),
+        "profile_names": list(profile_names)
+    }
+
     return {
         "status_code": 200,
         "status": "success",
         "message": "Clients fetched successfully",
-        "data": resolved
+        "data": resolved,
+        "detail": detail
     }
 
 @app.get("/clients/{client_id}", response_model=ApiResponse[ClientResponse])
@@ -1205,4 +1223,5 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "payment_drive_link_used": client_payment_drive_link
         }
     }
+
 

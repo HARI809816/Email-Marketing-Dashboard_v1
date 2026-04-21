@@ -15,6 +15,7 @@ class ApiResponse(BaseModel, Generic[T]):
     status: str
     message: str
     data: Optional[T] = None
+    detail: Optional[Any] = None
 
 class PasswordUpdate(BaseModel):
     new_password: str
