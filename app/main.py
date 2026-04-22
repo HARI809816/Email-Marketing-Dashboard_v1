@@ -332,6 +332,7 @@ def create_user(user: UserCreate, current_user: dict = Depends(require_manager_o
     result = users_collection.insert_one(user_dict)
     
     user_dict["_id"] = str(result.inserted_id)
+    user_dict["password"] = user.password
     return {
         "status_code": 201,
         "status": "success",
@@ -359,6 +360,7 @@ def create_manager(user: UserCreate, current_user: dict = Depends(require_manage
     result = users_collection.insert_one(user_dict)
     
     user_dict["_id"] = str(result.inserted_id)
+    user_dict["password"] = user.password
     return {
         "status_code": 201,
         "status": "success",
@@ -586,6 +588,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     }
     
     user_data = format_mongo_id(current_user.copy())
+    user_data["password"] = decrypt_password(user_data.get("password", ""))
     user_data["handled_clients"] = handled_clients
     user_data["dashboard_stats"] = dashboard_stats
     user_data["country_split"] = country_split
@@ -611,6 +614,7 @@ def get_user_details(email: str, current_user: dict = Depends(require_manager_or
     clients = list(clients_collection.find({"client_handler": target_user.get("email")}))
     
     user_data = format_mongo_id(target_user)
+    user_data["password"] = decrypt_password(user_data.get("password", ""))
     for c in clients:
         format_mongo_id(c)
         resolve_client_handler(c)
