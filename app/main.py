@@ -67,6 +67,8 @@ origins = [
     "https://marketing-dashboard123.vercel.app",
     "http://localhost:5173",
     "https://unflushed-uninterpretively-corey.ngrok-free.dev",
+    "https://email-marketing-team-dashboard-v2.vercel.app",
+    "https://email-marketing-team-dashboard-v2.vercel.app"
 ]
 
 app.add_middleware(
