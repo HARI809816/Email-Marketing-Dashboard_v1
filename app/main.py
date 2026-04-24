@@ -158,6 +158,24 @@ def resolve_client_handler(client: dict) -> dict:
         client["client_handler_name"] = None
     return client
 
+def get_user_email_by_name(name_or_email: str) -> str:
+    """
+    Finds a user's email by their full name or returns the input if it's already an email.
+    """
+    if not name_or_email:
+        return name_or_email
+        
+    # If it looks like an email, return as is
+    if "@" in name_or_email:
+        return name_or_email
+        
+    # Try to find user by full name
+    user = users_collection.find_one({"full_name": name_or_email})
+    if user:
+        return user.get("email")
+        
+    return name_or_email
+
 
 @app.get("/", response_model=ApiResponse[dict])
 def read_root():
@@ -641,7 +659,9 @@ def create_client(client: ClientCreate, current_user: dict = Depends(get_current
     client_dict = client.model_dump()
     
     # Dynamic Client Handler logic — store EMAIL for uniqueness
-    if not client_dict.get("client_handler"):
+    if client_dict.get("client_handler"):
+        client_dict["client_handler"] = get_user_email_by_name(client_dict["client_handler"])
+    else:
         if current_user["role"] == UserRole.EMPLOYEE:
             client_dict["client_handler"] = current_user.get("email")
         else:
@@ -944,8 +964,10 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "bank_account": "$bank_account",
                 "client_affiliations": "$affiliation",
                 "client_handler": "$client_handler",
-                "remarks": {"$ifNull": ["$order.remarks", "No active orders for this client"]},
-                "order_status": "$order.order_status"
+                "remarks": "$order.remarks",
+                "order_status": "$order.order_status",
+                "client_drive_link": "$client_drive_link",
+                "payment_drive_link": "$payment_drive_link"
             }
         }
     ]
@@ -1103,7 +1125,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "client_drive_link": request.client_drive_link,
             "payment_drive_link": request.payment_drive_link,  # Store in client as source
             "total_orders": 0,
-            "client_handler": current_user.get("email") if current_user["role"] == UserRole.EMPLOYEE else request.client_handler,
+            "client_handler": current_user.get("email") if current_user["role"] == UserRole.EMPLOYEE else get_user_email_by_name(request.client_handler),
             "created_at": datetime.utcnow()
         }
         clients_collection.insert_one(client_data)
