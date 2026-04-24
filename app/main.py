@@ -67,6 +67,7 @@ origins = [
     "https://marketing-dashboard123.vercel.app",
     "http://localhost:5173",
     "https://unflushed-uninterpretively-corey.ngrok-free.dev",
+    "https://email-marketing-team-dashboard-v2.vercel.app"
 ]
 
 app.add_middleware(
@@ -538,11 +539,100 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         },
         {
             "$addFields": {
-                "total_amount": {"$sum": "$orders.total_amount"},
-                "writing_amount": {"$sum": "$orders.writing_amount"},
-                "modification_amount": {"$sum": "$orders.modification_amount"},
-                "po_amount": {"$sum": "$orders.po_amount"},
-                "paid_amount": {"$sum": "$payments.amount"},
+                "total_amount": {
+                    "$sum": {
+                        "$map": {
+                            "input": "$orders",
+                            "as": "o",
+                            "in": {
+                                "$cond": [
+                                    {"$eq": ["$$o.currency", "INR"]},
+                                    {"$divide": [{"$ifNull": ["$$o.total_amount", 0.0]}, 83]},
+                                    {"$ifNull": ["$$o.total_amount", 0.0]}
+                                ]
+                            }
+                        }
+                    }
+                },
+                "writing_amount": {
+                    "$sum": {
+                        "$map": {
+                            "input": "$orders",
+                            "as": "o",
+                            "in": {
+                                "$cond": [
+                                    {"$eq": ["$$o.currency", "INR"]},
+                                    {"$divide": [{"$ifNull": ["$$o.writing_amount", 0.0]}, 83]},
+                                    {"$ifNull": ["$$o.writing_amount", 0.0]}
+                                ]
+                            }
+                        }
+                    }
+                },
+                "modification_amount": {
+                    "$sum": {
+                        "$map": {
+                            "input": "$orders",
+                            "as": "o",
+                            "in": {
+                                "$cond": [
+                                    {"$eq": ["$$o.currency", "INR"]},
+                                    {"$divide": [{"$ifNull": ["$$o.modification_amount", 0.0]}, 83]},
+                                    {"$ifNull": ["$$o.modification_amount", 0.0]}
+                                ]
+                            }
+                        }
+                    }
+                },
+                "po_amount": {
+                    "$sum": {
+                        "$map": {
+                            "input": "$orders",
+                            "as": "o",
+                            "in": {
+                                "$cond": [
+                                    {"$eq": ["$$o.currency", "INR"]},
+                                    {"$divide": [{"$ifNull": ["$$o.po_amount", 0.0]}, 83]},
+                                    {"$ifNull": ["$$o.po_amount", 0.0]}
+                                ]
+                            }
+                        }
+                    }
+                },
+                "paid_amount": {
+                    "$sum": {
+                        "$map": {
+                            "input": "$payments",
+                            "as": "p",
+                            "in": {
+                                "$let": {
+                                    "vars": {
+                                        # Match current payment to its parent order to get currency
+                                        "parent_order": {
+                                            "$arrayElemAt": [
+                                                {
+                                                    "$filter": {
+                                                        "input": "$orders",
+                                                        "as": "o",
+                                                        "cond": {"$eq": ["$$o.order_id", "$$p.order_id"]}
+                                                    }
+                                                },
+                                                0
+                                            ]
+                                        }
+                                    },
+                                    "in": {
+                                        "$cond": [
+                                            {"$eq": ["$$parent_order.currency", "INR"]},
+                                            {"$divide": [{"$ifNull": ["$$p.amount", 0.0]}, 83]},
+                                            {"$ifNull": ["$$p.amount", 0.0]}
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 "order_count": {"$size": "$orders"},
                 "payment_status": {"$ifNull": [{"$arrayElemAt": ["$orders.payment_status", 0]}, "No Order"]},
                 "pending_order_count": {
