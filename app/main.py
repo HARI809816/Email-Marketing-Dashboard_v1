@@ -40,7 +40,8 @@ from app.config import (
     SMTP_PORT, 
     SMTP_USERNAME, 
     SMTP_PASSWORD, 
-    EMAIL_FROM
+    EMAIL_FROM,
+    ALLOWED_ORIGINS
 )
 from app.auth import (
     encrypt_password,
@@ -66,17 +67,9 @@ from bson import ObjectId
 app = FastAPI(title="Email Dashboard API")
 
 # --- CORS CONFIGURATION ---
-origins = [
-    "https://marketing-dashboard123.vercel.app",
-    "http://localhost:5173",
-    "https://unflushed-uninterpretively-corey.ngrok-free.dev",
-    "https://email-marketing-team-dashboard-v2.vercel.app",
-    "https://email-marketing-team-dashboard-v2.vercel.app"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
