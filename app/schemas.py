@@ -262,6 +262,7 @@ class DashboardOrderResponse(BaseModel):
     remarks: Optional[str] = None
     client_drive_link: Optional[str] = None
     payment_drive_link: Optional[str] = None
+    client_details: Optional[str] = None
     amount: Optional[float] = None
     order_status: Optional[str] = None
 
@@ -287,6 +288,9 @@ class DashboardUpdate(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None
+    client_details: Optional[str] = None
+    client_drive_link: Optional[str] = None
+    
     
     # ORDER FIELDS
     manuscript_id: Optional[str] = None
@@ -319,6 +323,8 @@ class DashboardUpdate(BaseModel):
     phase_2_payment_date: Optional[datetime] = None
     phase_3_payment: Optional[float] = None
     phase_3_payment_date: Optional[datetime] = None
+    payment_drive_link: Optional[str] = None
+    order_status: Optional[str] = None
 
 # --- UNIFIED CREATE API SCHEMA ---
 
