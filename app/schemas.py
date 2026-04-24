@@ -65,7 +65,7 @@ class DashboardStats(BaseModel):
     reject_count_percentage: float = 0.0
 
 class UserDetailResponse(UserResponse):
-    handled_clients: list[ClientDetailResponse] = []
+    handled_clients: list["ClientDetailResponse"] = []
     dashboard_stats: Optional[DashboardStats] = None
     country_split: dict[str, float] = {}
 
@@ -181,6 +181,7 @@ class OrderBase(BaseModel):
     po_end_date: Optional[datetime] = None
     payment_status: str = "Pending"
     remarks: Optional[str] = None
+    order_status: Optional[str] = None
 
 class OrderCreate(OrderBase):
     pass
@@ -259,8 +260,10 @@ class DashboardOrderResponse(BaseModel):
     client_handler: Optional[str] = None
     client_handler_name: Optional[str] = None
     remarks: Optional[str] = None
-    rank: Optional[str] = None
-    index: Optional[str] = None
+    client_drive_link: Optional[str] = None
+    payment_drive_link: Optional[str] = None
+    amount: Optional[float] = None
+    order_status: Optional[str] = None
 
     @field_validator(
         "order_date", "writing_start_date", "writing_end_date", 
@@ -351,6 +354,16 @@ class UnifiedCreateRequest(BaseModel):
     profile_start_date: Optional[str] = None
     currency: str  # USD | INR
     payment_status: str  # pending | partial | paid
+    po_start_date: Optional[str] = None
+    po_end_date: Optional[str] = None
+    po_amount: Optional[float] = None
+    writing_amount: Optional[float] = None
+    modification_amount: Optional[float] = None
+    total_amount: Optional[float] = None
+    writing_start_date: Optional[str] = None
+    writing_end_date: Optional[str] = None
+    modification_start_date: Optional[str] = None
+    modification_end_date: Optional[str] = None
 
     # Optional manuscript fields
     create_manuscript: bool = False

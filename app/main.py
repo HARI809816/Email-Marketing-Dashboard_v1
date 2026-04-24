@@ -563,6 +563,9 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         total_system_paid += c["paid_amount"]
         total_system_orders += c["order_count"]
         total_system_pending += c["pending_order_count"]
+
+        print(c["client_id"])   
+        print(c["total_amount"])
         
         # Cleanup extra fields not needed in response
         c.pop("orders", None)
@@ -577,7 +580,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
     
     dashboard_stats = {
-        "overall_amount": total_system_paid,
+        "overall_amount": total_system_amount,
         "overall_amount_percentage": round(overall_amt_pct, 1),
         "total_clients": total_clients_count,
         "total_clients_percentage": 100.0, 
@@ -936,13 +939,13 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "phase_3_payment": {"$sum": "$p3.amount"},
                 "phase_3_payment_date": {"$arrayElemAt": ["$p3.payment_date", 0]},
                 "payment_status": {"$ifNull": ["$order.payment_status", "No Order"]},
+                "amount": {"$ifNull": ["$order.amount", 0.0]},
                 "client_link": "$client_link",
                 "bank_account": "$bank_account",
                 "client_affiliations": "$affiliation",
                 "client_handler": "$client_handler",
                 "remarks": {"$ifNull": ["$order.remarks", "No active orders for this client"]},
-                "rank": "$order.rank",
-                "index": "$order.index"
+                "order_status": "$order.order_status"
             }
         }
     ]
@@ -1171,7 +1174,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         "po_end_date": None,
         "payment_status": request.payment_status,
         "payment_drive_link": client_payment_drive_link,  # From client's payment_drive_link
-        "remarks": f"Created via unified API by {current_user.get('full_name')}",
+        "remarks": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
