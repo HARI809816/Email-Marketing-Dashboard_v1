@@ -33,6 +33,8 @@ from app.schemas import (
 import random
 import smtplib
 from email.message import EmailMessage
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import (
     SMTP_SERVER, 
     SMTP_PORT, 
@@ -58,6 +60,7 @@ from app.database import (
     payments_collection,
     otps_collection
 )
+from app.cache import cache_manager, dashboard_cache_key, invalidate_dashboard_cache
 from bson import ObjectId
 
 app = FastAPI(title="Email Dashboard API")
@@ -80,6 +83,23 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# --- PERFORMANCE MONITORING MIDDLEWARE ---
+class PerformanceMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        
+        # Log slow requests (>1 second)
+        if process_time > 1.0:
+            print(f"🐌 SLOW REQUEST: {request.method} {request.url.path} took {process_time:.2f}s")
+        elif process_time > 0.5:
+            print(f"⚠️  MEDIUM REQUEST: {request.method} {request.url.path} took {process_time:.2f}s")
+        
+        return response
+
+app.add_middleware(PerformanceMiddleware)
 
 
 # --- CUSTOM EXCEPTION HANDLERS ---
@@ -108,6 +128,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
+# --- HELPER ---
 # --- HELPER ---
 def send_otp_email(to_email: str, otp: str):
     """
@@ -907,7 +928,19 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     Unified endpoint for the frontend dashboard.
     Optimized with MongoDB Aggregation Pipeline ($lookup + $unwind).
     Shows clients even if no orders exist.
+    Includes caching for improved performance.
     """
+    # Check cache first
+    cache_key = dashboard_cache_key(current_user.get("email"), current_user["role"])
+    cached_data = cache_manager.get(cache_key)
+    if cached_data:
+        return {
+            "status_code": 200,
+            "status": "success",
+            "message": "Dashboard data fetched from cache",
+            "data": cached_data
+        }
+
     # 1. Get filtered clients query
     client_match = {}
     if current_user["role"] == UserRole.EMPLOYEE:
@@ -998,6 +1031,9 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     # Resolve handler names for display
     for d in dashboard_data:
         resolve_client_handler(d)
+    
+    # Cache the result
+    cache_manager.set(cache_key, dashboard_data)
     
     return {
         "status_code": 200,
@@ -1103,6 +1139,9 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
                     {"$set": p_updates},
                     upsert=True # Create if doesn't exist for that phase
                 )
+
+    # Invalidate dashboard cache since data has changed
+    invalidate_dashboard_cache()
 
     return {
         "status_code": 200,
@@ -1258,6 +1297,9 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         {"client_id": client_id},
         {"$inc": {"total_orders": 1}}
     )
+
+    # Invalidate dashboard cache since new data was created
+    invalidate_dashboard_cache()
 
     # Return comprehensive response
     return {
