@@ -525,39 +525,58 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         {
             "$lookup": {
                 "from": "orders",
-                "localField": "client_id",
-                "foreignField": "client_id",
-                "as": "orders"
+                "let": {"cid": "$client_id"},
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$client_id", "$$cid"]}}},
+                    {
+                        "$group": {
+                            "_id": None,
+                            "total_amount": {"$sum": "$total_amount"},
+                            "writing_amount": {"$sum": "$writing_amount"},
+                            "modification_amount": {"$sum": "$modification_amount"},
+                            "po_amount": {"$sum": "$po_amount"},
+                            "order_count": {"$sum": 1},
+                            "payment_status": {"$first": "$payment_status"},
+                            "pending_order_count": {
+                                "$sum": {"$cond": [{"$eq": ["$payment_status", "Pending"]}, 1, 0]}
+                            }
+                        }
+                    }
+                ],
+                "as": "order_stats"
             }
         },
+        {"$unwind": {"path": "$order_stats", "preserveNullAndEmptyArrays": True}},
         {
             "$lookup": {
                 "from": "payments",
-                "localField": "client_id",
-                "foreignField": "client_id",
-                "as": "payments"
-            }
-        },
-        {
-            "$addFields": {
-                "total_amount": {"$sum": "$orders.total_amount"},
-                "writing_amount": {"$sum": "$orders.writing_amount"},
-                "modification_amount": {"$sum": "$orders.modification_amount"},
-                "po_amount": {"$sum": "$orders.po_amount"},
-                "paid_amount": {"$sum": "$payments.amount"},
-                "order_count": {"$size": "$orders"},
-                "payment_status": {"$ifNull": [{"$arrayElemAt": ["$orders.payment_status", 0]}, "No Order"]},
-                "pending_order_count": {
-                    "$size": {
-                        "$filter": {
-                            "input": "$orders",
-                            "as": "o",
-                            "cond": {"$eq": ["$$o.payment_status", "Pending"]}
+                "let": {"cid": "$client_id"},
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$client_id", "$$cid"]}}},
+                    {
+                        "$group": {
+                            "_id": None,
+                            "paid_amount": {"$sum": "$amount"}
                         }
                     }
-                }
+                ],
+                "as": "payment_stats"
             }
-        }
+        },
+        {"$unwind": {"path": "$payment_stats", "preserveNullAndEmptyArrays": True}},
+        {
+            "$addFields": {
+                "total_amount": {"$ifNull": ["$order_stats.total_amount", 0.0]},
+                "writing_amount": {"$ifNull": ["$order_stats.writing_amount", 0.0]},
+                "modification_amount": {"$ifNull": ["$order_stats.modification_amount", 0.0]},
+                "po_amount": {"$ifNull": ["$order_stats.po_amount", 0.0]},
+                "paid_amount": {"$ifNull": ["$payment_stats.paid_amount", 0.0]},
+                "order_count": {"$ifNull": ["$order_stats.order_count", 0]},
+                "payment_status": {"$ifNull": ["$order_stats.payment_status", "No Order"]},
+                "pending_order_count": {"$ifNull": ["$order_stats.pending_order_count", 0]}
+            }
+        },
+        {"$project": {"order_stats": 0, "payment_stats": 0}}
     ]
     
     clients_with_stats = list(clients_collection.aggregate(pipeline))
