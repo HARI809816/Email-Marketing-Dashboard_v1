@@ -259,6 +259,8 @@ class DashboardOrderResponse(BaseModel):
     client_handler: Optional[str] = None
     client_handler_name: Optional[str] = None
     remarks: Optional[str] = None
+    rank: Optional[str] = None
+    index: Optional[str] = None
 
     @field_validator(
         "order_date", "writing_start_date", "writing_end_date", 

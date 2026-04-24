@@ -940,7 +940,9 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "bank_account": "$bank_account",
                 "client_affiliations": "$affiliation",
                 "client_handler": "$client_handler",
-                "remarks": {"$ifNull": ["$order.remarks", "No active orders for this client"]}
+                "remarks": {"$ifNull": ["$order.remarks", "No active orders for this client"]},
+                "rank": "$order.rank",
+                "index": "$order.index"
             }
         }
     ]
