@@ -624,8 +624,8 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         total_system_orders += c["order_count"]
         total_system_pending += c["pending_order_count"]
 
-        print(c["client_id"])   
-        print(c["total_amount"])
+        # print(c["client_id"])   
+        # print(c["total_amount"])
         
         # Cleanup extra fields not needed in response
         c.pop("orders", None)
