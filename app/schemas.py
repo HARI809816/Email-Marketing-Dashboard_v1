@@ -333,6 +333,7 @@ class UnifiedCreateRequest(BaseModel):
     clients_details: Optional[str] = None  # New field for detailed client information
     client_drive_link: Optional[str] = None  # New field for client drive link
     payment_drive_link: Optional[str] = None  # New field - stored in client, copied to orders
+    bank_account: Optional[str] = None
 
     # Order fields
     client_handler: Optional[str] = None  # For admin/manager to assign a handler
