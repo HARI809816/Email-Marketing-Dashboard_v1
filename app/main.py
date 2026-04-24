@@ -33,6 +33,8 @@ from app.schemas import (
 import random
 import smtplib
 from email.message import EmailMessage
+import aiosmtplib
+from email.message import EmailMessage
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import (
@@ -123,9 +125,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # --- HELPER ---
 # --- HELPER ---
-def send_otp_email(to_email: str, otp: str):
+# --- HELPER ---
+async def send_otp_email(to_email: str, otp: str):
     """
-    Sends an OTP email via SMTP.
+    Sends an OTP email via SMTP asynchronously.
     """
     msg = EmailMessage()
     msg.set_content(f"Your OTP for login is: {otp}\n\nThis OTP is valid for 5 minutes.")
@@ -141,15 +144,19 @@ def send_otp_email(to_email: str, otp: str):
     try:
         if SMTP_PORT == 465:
             # Port 465 requires SMTP_SSL from the start
-            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-                server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.send_message(msg)
+            server = aiosmtplib.SMTP(hostname=SMTP_SERVER, port=SMTP_PORT, use_tls=True)
+            await server.connect()
+            await server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            await server.send_message(msg)
+            await server.quit()
         else:
             # Port 587 (and others) typically use STARTTLS
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls()
-                server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.send_message(msg)
+            server = aiosmtplib.SMTP(hostname=SMTP_SERVER, port=SMTP_PORT)
+            await server.connect()
+            await server.start_tls()
+            await server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            await server.send_message(msg)
+            await server.quit()
         return True
     except Exception as e:
         print(f"Error sending email: {e}")
@@ -232,7 +239,7 @@ def init_super_admin(user: UserCreate):
 # --- LOGIN ---
 
 @app.post("/login", response_model=ApiResponse[LoginResponse])
-def login(request: LoginRequest):
+async def login(request: LoginRequest):
     """
     Shared login endpoint. Admins and Managers require OTP.
     Employees login directly.
@@ -259,8 +266,8 @@ def login(request: LoginRequest):
             upsert=True
         )
         
-        # Send OTP
-        sent = send_otp_email(user["email"], otp)
+        # Send OTP asynchronously
+        sent = await send_otp_email(user["email"], otp)
         
         return {
             "status_code": 200,
