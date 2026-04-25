@@ -185,6 +185,24 @@ def resolve_client_handler(client: dict) -> dict:
         client["client_handler_name"] = None
     return client
 
+def resolve_client_handler_bulk(clients: list[dict]) -> list[dict]:
+    """Resolve handler names for many clients with a single DB query."""
+    emails = {client.get("client_handler") for client in clients if client.get("client_handler")}
+    if not emails:
+        for client in clients:
+            client["client_handler_name"] = None
+        return clients
+
+    handlers = users_collection.find({"email": {"$in": list(emails)}}, {"email": 1, "full_name": 1})
+    email_to_name = {handler["email"]: handler.get("full_name") for handler in handlers}
+    for client in clients:
+        handler_email = client.get("client_handler")
+        if handler_email:
+            client["client_handler_name"] = email_to_name.get(handler_email, handler_email)
+        else:
+            client["client_handler_name"] = None
+    return clients
+
 def get_user_email_by_name(name_or_email: str) -> str:
     """
     Finds a user's email by their full name or returns the input if it's already an email.
@@ -730,11 +748,11 @@ def get_clients(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
         query = {"client_handler": current_user.get("email")}
-    clients = list(clients_collection.find(query))
-    resolved = [resolve_client_handler(format_mongo_id(c)) for c in clients]
+    clients = [format_mongo_id(c) for c in clients_collection.find(query)]
+    resolved = resolve_client_handler_bulk(clients)
     
     # Fetch all employees to extract unique profile names and employee names
-    employees = list(users_collection.find({"role": UserRole.EMPLOYEE}))
+    employees = list(users_collection.find({"role": UserRole.EMPLOYEE}, {"full_name": 1, "profile_names": 1}))
     employee_names = set()
     profile_names = set()
     for emp in employees:
@@ -830,10 +848,8 @@ def create_manuscript(manuscript: ManuscriptCreate, current_user: dict = Depends
 def get_manuscripts(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        # Get clients handled by this employee (filter by unique email)
-        my_clients = list(clients_collection.find({"client_handler": current_user.get("email")}))
-        my_client_ids = [c["client_id"] for c in my_clients]
-        query = {"client_id": {"$in": my_client_ids}}
+        my_client_ids = clients_collection.distinct("client_id", {"client_handler": current_user.get("email")})
+        query = {"client_id": {"$in": my_client_ids}} if my_client_ids else {"client_id": {"$in": []}}
         
     ms = list(manuscripts_collection.find(query))
     return {
@@ -876,10 +892,8 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
 def get_orders(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        # Get clients handled by this employee (filter by unique email)
-        my_clients = list(clients_collection.find({"client_handler": current_user.get("email")}))
-        my_client_ids = [c["client_id"] for c in my_clients]
-        query = {"client_id": {"$in": my_client_ids}}
+        my_client_ids = clients_collection.distinct("client_id", {"client_handler": current_user.get("email")})
+        query = {"client_id": {"$in": my_client_ids}} if my_client_ids else {"client_id": {"$in": []}}
         
     orders = list(orders_collection.find(query))
     return {
@@ -911,10 +925,8 @@ def create_payment(payment: PaymentCreate, current_user: dict = Depends(require_
 def get_payments(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
-        # Get clients handled by this employee (filter by unique email)
-        my_clients = list(clients_collection.find({"client_handler": current_user.get("email")}))
-        my_client_ids = [c["client_id"] for c in my_clients]
-        query = {"client_id": {"$in": my_client_ids}}
+        my_client_ids = clients_collection.distinct("client_id", {"client_handler": current_user.get("email")})
+        query = {"client_id": {"$in": my_client_ids}} if my_client_ids else {"client_id": {"$in": []}}
         
     payments = list(payments_collection.find(query))
     return {
@@ -1032,9 +1044,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     
     dashboard_data = list(clients_collection.aggregate(pipeline))
     
-    # Resolve handler names for display
-    for d in dashboard_data:
-        resolve_client_handler(d)
+    # Resolve handler names for display in bulk
+    resolve_client_handler_bulk(dashboard_data)
     
     # Cache the result
     cache_manager.set(cache_key, dashboard_data)
