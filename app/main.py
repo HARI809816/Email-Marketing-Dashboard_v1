@@ -646,6 +646,9 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
             "data": cached_data
         }
     
+    from app.currency_converter import get_inr_to_usd_rate
+    rate = get_inr_to_usd_rate() or 0.012
+
     # 1. Determine client filter
     client_match = {}
     if current_user["role"] not in [UserRole.ADMIN, UserRole.MANAGER]:
@@ -663,10 +666,42 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                     {
                         "$group": {
                             "_id": None,
-                            "total_amount": {"$sum": "$total_amount"},
-                            "writing_amount": {"$sum": "$writing_amount"},
-                            "modification_amount": {"$sum": "$modification_amount"},
-                            "po_amount": {"$sum": "$po_amount"},
+                            "total_amount": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$eq": ["$currency", "INR"]},
+                                        {"$multiply": ["$total_amount", rate]},
+                                        "$total_amount"
+                                    ]
+                                }
+                            },
+                            "writing_amount": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$eq": ["$currency", "INR"]},
+                                        {"$multiply": ["$writing_amount", rate]},
+                                        "$writing_amount"
+                                    ]
+                                }
+                            },
+                            "modification_amount": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$eq": ["$currency", "INR"]},
+                                        {"$multiply": ["$modification_amount", rate]},
+                                        "$modification_amount"
+                                    ]
+                                }
+                            },
+                            "po_amount": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$eq": ["$currency", "INR"]},
+                                        {"$multiply": ["$po_amount", rate]},
+                                        "$po_amount"
+                                    ]
+                                }
+                            },
                             "order_count": {"$sum": 1},
                             "payment_status": {"$first": "$payment_status"},
                             "pending_order_count": {
@@ -686,9 +721,26 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                 "pipeline": [
                     {"$match": {"$expr": {"$eq": ["$client_id", "$$cid"]}}},
                     {
+                        "$lookup": {
+                            "from": "orders",
+                            "localField": "reference_id",
+                            "foreignField": "reference_id",
+                            "as": "order_info"
+                        }
+                    },
+                    {"$unwind": {"path": "$order_info", "preserveNullAndEmptyArrays": True}},
+                    {
                         "$group": {
                             "_id": None,
-                            "paid_amount": {"$sum": "$amount"}
+                            "paid_amount": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$eq": ["$order_info.currency", "INR"]},
+                                        {"$multiply": ["$paid_amount", rate]},
+                                        "$paid_amount"
+                                    ]
+                                }
+                            }
                         }
                     }
                 ],
@@ -731,7 +783,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     for c in clients_with_stats:
         # Calculate country split for Pie Chart
         country = c.get("country") or "Unknown"
-        country_split[country] = country_split.get(country, 0.0) + c.get("total_amount", 0.0)
+        country_split[country] = country_split.get(country, 0.0) + c.get("paid_amount", 0.0)
         
         # Pull global stats from client totals
         total_system_amount += c["total_amount"]
@@ -755,13 +807,13 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
     
     dashboard_stats = {
-        "overall_amount": total_system_amount,
+        "overall_amount": total_system_paid,
         "overall_amount_percentage": round(overall_amt_pct, 1),
         "total_clients": total_clients_count,
         "total_clients_percentage": 100.0, 
         "pending_count": total_system_pending,
         "pending_count_percentage": round(pending_pct, 1),
-        "reject_count": 0,
+        "reject_count": 0, 
         "reject_count_percentage": 0.0
     }
     
@@ -1141,7 +1193,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "phase_3_payment_date": {"$arrayElemAt": ["$p3.payment_date", 0]},
                 "phase_3_detail": {"$arrayElemAt": ["$p3.details", 0]},
                 "payment_status": {"$ifNull": ["$order.payment_status", "No Order"]},
-                "amount": {"$ifNull": ["$order.amount", 0.0]},
+                "paid_amount": {"$ifNull": ["$order.paid_amount", 0.0]},
                 "client_link": "$client_link",
                 "bank_account": "$bank_account",
                 "client_affiliations": "$affiliation",

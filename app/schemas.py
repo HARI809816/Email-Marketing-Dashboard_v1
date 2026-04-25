@@ -211,6 +211,8 @@ class PaymentBase(BaseModel):
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
     status: str = "Pending"
+    paid_amount: Optional[float] = 0.0
+
 
 class PaymentCreate(PaymentBase):
     pass
@@ -271,6 +273,7 @@ class DashboardOrderResponse(BaseModel):
     client_details: Optional[str] = None
     amount: Optional[float] = None
     order_status: Optional[str] = None
+    paid_amount: Optional[float] = 0.0
 
     @field_validator(
         "order_date", "writing_start_date", "writing_end_date", 
@@ -334,6 +337,7 @@ class DashboardUpdate(BaseModel):
     phase_3_payment_details: Optional[str] = None
     payment_drive_link: Optional[str] = None
     order_status: Optional[str] = None
+    paid_amount : Optional[float] = 0.0 
 
 # --- UNIFIED CREATE API SCHEMA ---
 
