@@ -16,7 +16,7 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "https://marketing-dashboard123.vercel.app" },
+        { "key": "Access-Control-Allow-Origin", "value": "https://email-marketing-team-dashboard-v2.vercel.app" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Authorization, Content-Type, Accept" },
         { "key": "Access-Control-Allow-Credentials", "value": "true" }
