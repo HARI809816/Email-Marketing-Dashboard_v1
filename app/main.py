@@ -61,7 +61,8 @@ from app.database import (
     payments_collection,
     otps_collection
 )
-from app.cache import cache_manager, dashboard_cache_key, invalidate_dashboard_cache
+from app.cache import cache_manager, dashboard_cache_key, invalidate_dashboard_cache, invalidate_user_cache
+from app.currency_converter import convert_inr_to_usd, convert_usd_to_inr, get_current_rate_info
 from bson import ObjectId
 
 app = FastAPI(title="Email Dashboard API")
@@ -229,6 +230,82 @@ def read_root():
         "status": "success",
         "message": "Welcome to Email Dashboard API",
         "data": None
+    }
+
+# --- CURRENCY CONVERSION ---
+
+@app.get("/currency/exchange-rate", response_model=ApiResponse[dict])
+def get_exchange_rate():
+    """
+    Get current INR to USD exchange rate with caching.
+    """
+    rate_info = get_current_rate_info()
+    if not rate_info:
+        raise HTTPException(
+            status_code=503,
+            detail="Exchange rate service unavailable"
+        )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "Exchange rate fetched successfully",
+        "data": rate_info
+    }
+
+@app.post("/currency/inr-to-usd", response_model=ApiResponse[dict])
+def convert_inr_to_usd_endpoint(amount: dict):
+    """
+    Convert amount from INR to USD.
+    Request: {"amount_inr": 1000}
+    Response includes current rate and converted amount.
+    """
+    amount_inr = amount.get("amount_inr")
+    if amount_inr is None or amount_inr < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid amount_inr. Must be a positive number."
+        )
+    
+    result = convert_inr_to_usd(float(amount_inr))
+    if not result:
+        raise HTTPException(
+            status_code=503,
+            detail="Exchange rate service unavailable"
+        )
+    
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "Conversion completed successfully",
+        "data": result
+    }
+
+@app.post("/currency/usd-to-inr", response_model=ApiResponse[dict])
+def convert_usd_to_inr_endpoint(amount: dict):
+    """
+    Convert amount from USD to INR.
+    Request: {"amount_usd": 15}
+    Response includes current rate and converted amount.
+    """
+    amount_usd = amount.get("amount_usd")
+    if amount_usd is None or amount_usd < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid amount_usd. Must be a positive number."
+        )
+    
+    result = convert_usd_to_inr(float(amount_usd))
+    if not result:
+        raise HTTPException(
+            status_code=503,
+            detail="Exchange rate service unavailable"
+        )
+    
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "Conversion completed successfully",
+        "data": result
     }
 
 # --- INITIALIZATION ---
@@ -555,8 +632,20 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
 def get_own_details(current_user: dict = Depends(get_current_user)):
     """
     Get current user profile details including nested handled clients and dashboard stats.
-    Optimized with MongoDB Aggregation Pipeline.
+    Optimized with MongoDB Aggregation Pipeline and caching.
     """
+    # Check cache first
+    from app.cache import user_cache_key
+    cache_key = user_cache_key(current_user.get("email"))
+    cached_data = cache_manager.get(cache_key)
+    if cached_data:
+        return {
+            "status_code": 200,
+            "status": "success",
+            "message": "User details fetched from cache",
+            "data": cached_data
+        }
+    
     # 1. Determine client filter
     client_match = {}
     if current_user["role"] not in [UserRole.ADMIN, UserRole.MANAGER]:
@@ -624,6 +713,14 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     
     clients_with_stats = list(clients_collection.aggregate(pipeline))
     
+    # Format IDs and calculate remaining amounts
+    for c in clients_with_stats:
+        c["_id"] = str(c["_id"])
+        c["remaining_amount"] = c["total_amount"] - c["paid_amount"]
+    
+    # Resolve all handler names in bulk (single DB query)
+    resolve_client_handler_bulk(clients_with_stats)
+    
     handled_clients = []
     country_split = {}
     total_system_amount = 0.0
@@ -632,10 +729,6 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     total_system_pending = 0
     
     for c in clients_with_stats:
-        c["_id"] = str(c["_id"])
-        c["remaining_amount"] = c["total_amount"] - c["paid_amount"]
-        resolve_client_handler(c)
-        
         # Calculate country split for Pie Chart
         country = c.get("country") or "Unknown"
         country_split[country] = country_split.get(country, 0.0) + c.get("total_amount", 0.0)
@@ -677,6 +770,9 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     user_data["handled_clients"] = handled_clients
     user_data["dashboard_stats"] = dashboard_stats
     user_data["country_split"] = country_split
+    
+    # Cache the result for 5 minutes
+    cache_manager.set(cache_key, user_data, ttl=300)
     
     return {
         "status_code": 200,
@@ -736,6 +832,11 @@ def create_client(client: ClientCreate, current_user: dict = Depends(get_current
     client_dict["created_at"] = datetime.utcnow()
     result = clients_collection.insert_one(client_dict)
     client_dict["_id"] = str(result.inserted_id)
+    
+    # Invalidate user cache since handled clients changed
+    invalidate_user_cache(current_user.get("email"))
+    invalidate_dashboard_cache()
+    
     return {
         "status_code": 201,
         "status": "success",
@@ -881,6 +982,10 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
     order_dict["updated_at"] = datetime.utcnow()
     result = orders_collection.insert_one(order_dict)
     order_dict["_id"] = str(result.inserted_id)
+    
+    # Invalidate caches since data changed
+    invalidate_dashboard_cache()
+    
     return {
         "status_code": 201,
         "status": "success",
@@ -914,6 +1019,10 @@ def create_payment(payment: PaymentCreate, current_user: dict = Depends(require_
     pay_dict["created_at"] = datetime.utcnow()
     result = payments_collection.insert_one(pay_dict)
     pay_dict["_id"] = str(result.inserted_id)
+    
+    # Invalidate caches since data changed
+    invalidate_dashboard_cache()
+    
     return {
         "status_code": 201,
         "status": "success",
@@ -1157,6 +1266,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
 
     # Invalidate dashboard cache since data has changed
     invalidate_dashboard_cache()
+    invalidate_user_cache(current_user.get("email"))
 
     return {
         "status_code": 200,
@@ -1315,6 +1425,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
 
     # Invalidate dashboard cache since new data was created
     invalidate_dashboard_cache()
+    invalidate_user_cache(current_user.get("email"))
 
     # Return comprehensive response
     return {
