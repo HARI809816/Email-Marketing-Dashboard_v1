@@ -33,8 +33,6 @@ from app.schemas import (
 import random
 import smtplib
 from email.message import EmailMessage
-import aiosmtplib
-from email.message import EmailMessage
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import (
@@ -141,6 +139,12 @@ async def send_otp_email(to_email: str, otp: str):
     print("⚠️  This OTP is printed for testing only!\n")
 
     print(f"\n[OTP DEBUG] Attempting to send email to {to_email} via {SMTP_SERVER}:{SMTP_PORT}\n")
+    try:
+        import aiosmtplib
+    except ImportError as e:
+        print(f"AIOSMTPLIB_MISSING: {e}")
+        return False
+
     try:
         if SMTP_PORT == 465:
             # Port 465 requires SMTP_SSL from the start
