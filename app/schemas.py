@@ -203,10 +203,13 @@ class PaymentBase(BaseModel):
     payment_date: Optional[datetime] = None
     phase_1_payment: Optional[float] = 0.0
     phase_1_payment_date: Optional[datetime] = None
+    phase_1_payment_details: Optional[str] = None
     phase_2_payment: Optional[float] = 0.0
     phase_2_payment_date: Optional[datetime] = None
+    phase_2_payment_details: Optional[str] = None
     phase_3_payment: Optional[float] = 0.0
     phase_3_payment_date: Optional[datetime] = None
+    phase_3_payment_details: Optional[str] = None
     status: str = "Pending"
 
 class PaymentCreate(PaymentBase):
@@ -249,10 +252,13 @@ class DashboardOrderResponse(BaseModel):
     phase: Optional[int] = None
     phase_1_payment: float = 0.0
     phase_1_payment_date: Optional[datetime] = None
+    phase_1_payment_details: Optional[str] = None
     phase_2_payment: float = 0.0
     phase_2_payment_date: Optional[datetime] = None
+    phase_2_payment_details: Optional[str] = None
     phase_3_payment: float = 0.0
     phase_3_payment_date: Optional[datetime] = None
+    phase_3_payment_details: Optional[str] = None
     payment_status: Optional[str] = "Pending"
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
@@ -319,10 +325,13 @@ class DashboardUpdate(BaseModel):
     # PAYMENT FIELDS (Updates the first payment record for simplicity or we can expand)
     phase_1_payment: Optional[float] = None
     phase_1_payment_date: Optional[datetime] = None
+    phase_1_payment_details: Optional[str] = None
     phase_2_payment: Optional[float] = None
     phase_2_payment_date: Optional[datetime] = None
+    phase_2_payment_details: Optional[str] = None
     phase_3_payment: Optional[float] = None
     phase_3_payment_date: Optional[datetime] = None
+    phase_3_payment_details: Optional[str] = None
     payment_drive_link: Optional[str] = None
     order_status: Optional[str] = None
 
