@@ -1312,6 +1312,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             p_updates = {}
             if amt_key in payment_updates_raw:
                 p_updates["amount"] = payment_updates_raw[amt_key]
+                p_updates["paid_amount"] = payment_updates_raw[amt_key]
             if date_key in payment_updates_raw:
                 p_updates["payment_date"] = payment_updates_raw[date_key]
             if detail_key in payment_updates_raw:
