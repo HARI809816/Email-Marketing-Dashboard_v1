@@ -737,8 +737,8 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                                 "$sum": {
                                     "$cond": [
                                         {"$eq": ["$order_info.currency", "INR"]},
-                                        {"$multiply": ["$paid_amount", rate]},
-                                        "$paid_amount"
+                                        {"$multiply": [{"$ifNull": ["$paid_amount", "$amount"]}, rate]},
+                                        {"$ifNull": ["$paid_amount", "$amount"]}
                                     ]
                                 }
                             }
@@ -1241,7 +1241,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     # 2. Map fields to collections
     client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_details", "client_drive_link"]
     order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount"]
-    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details"]
+    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details", "paid_amount"]
 
     # Get the order to verify it exists and find linked client
     try:
@@ -1317,6 +1317,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
                 p_updates["payment_date"] = payment_updates_raw[date_key]
             if detail_key in payment_updates_raw:
                 p_updates[detail_key] = payment_updates_raw[detail_key]
+            if "paid_amount" in payment_updates_raw:
+                p_updates["paid_amount"] = payment_updates_raw["paid_amount"]
             
             if p_updates:
                 bulk_ops.append(UpdateOne(
