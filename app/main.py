@@ -737,8 +737,8 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                                 "$sum": {
                                     "$cond": [
                                         {"$eq": ["$order_info.currency", "INR"]},
-                                        {"$multiply": [{"$ifNull": ["$paid_amount", "$amount"]}, rate]},
-                                        {"$ifNull": ["$paid_amount", "$amount"]}
+                                        {"$multiply": ["$order_info.paid_amount", rate]},
+                                        "$order_info.paid_amount"
                                     ]
                                 }
                             }
@@ -1184,14 +1184,14 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "po_start_date": "$order.po_start_date",
                 "po_end_date": "$order.po_end_date",
                 "phase": {"$literal": None},
-                "phase_1_payment": {"$sum": "$p1.amount"},
-                "phase_1_payment_date": {"$arrayElemAt": ["$p1.payment_date", 0]},
+                "phase_1_payment": {"$arrayElemAt": ["$p1.phase_1_payment", 0]},
+                "phase_1_payment_date": {"$arrayElemAt": ["$p1.phase_1_payment_date", 0]},
                 "phase_1_payment_details": {"$arrayElemAt": ["$p1.phase_1_payment_details", 0]},
-                "phase_2_payment": {"$sum": "$p2.amount"},
-                "phase_2_payment_date": {"$arrayElemAt": ["$p2.payment_date", 0]},
+                "phase_2_payment": {"$arrayElemAt": ["$p2.phase_2_payment", 0]},
+                "phase_2_payment_date": {"$arrayElemAt": ["$p2.phase_2_payment_date", 0]},
                 "phase_2_payment_details": {"$arrayElemAt": ["$p2.phase_2_payment_details", 0]},
-                "phase_3_payment": {"$sum": "$p3.amount"},
-                "phase_3_payment_date": {"$arrayElemAt": ["$p3.payment_date", 0]},
+                "phase_3_payment": {"$arrayElemAt": ["$p3.phase_3_payment", 0]},
+                "phase_3_payment_date": {"$arrayElemAt": ["$p3.phase_3_payment_date", 0]},
                 "phase_3_payment_details": {"$arrayElemAt": ["$p3.phase_3_payment_details", 0]},
                 "payment_status": {"$ifNull": ["$order.payment_status", "No Order"]},
                 "paid_amount": {"$ifNull": ["$order.paid_amount", 0.0]},
@@ -1241,7 +1241,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     # 2. Map fields to collections
     client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_details", "client_drive_link"]
     order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount"]
-    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details", "paid_amount"]
+    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details"]
 
     # Get the order to verify it exists and find linked client
     try:
@@ -1305,25 +1305,15 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         # Prepare bulk operations for each phase
         bulk_ops = []
         for phase in [1, 2, 3]:
-            amt_key = f"phase_{phase}_payment"
-            date_key = f"phase_{phase}_payment_date"
-            detail_key = f"phase_{phase}_payment_details"
+            phase_updates = {}
+            for field in payment_fields:
+                if field.startswith(f"phase_{phase}_") and field in payment_updates_raw:
+                    phase_updates[field] = payment_updates_raw[field]
             
-            p_updates = {}
-            if amt_key in payment_updates_raw:
-                p_updates["amount"] = payment_updates_raw[amt_key]
-                p_updates["paid_amount"] = payment_updates_raw[amt_key]
-            if date_key in payment_updates_raw:
-                p_updates["payment_date"] = payment_updates_raw[date_key]
-            if detail_key in payment_updates_raw:
-                p_updates[detail_key] = payment_updates_raw[detail_key]
-            if "paid_amount" in payment_updates_raw:
-                p_updates["paid_amount"] = payment_updates_raw["paid_amount"]
-            
-            if p_updates:
+            if phase_updates:
                 bulk_ops.append(UpdateOne(
                     {"order_id": order_custom_id, "phase": phase},
-                    {"$set": p_updates},
+                    {"$set": phase_updates},
                     upsert=True
                 ))
         
