@@ -71,9 +71,11 @@ class CacheManager:
                 if keys:
                     self.redis_client.delete(*keys)
             else:
-                # For memory cache, we can't easily clear by pattern
-                # This is a limitation of TTLCache
-                pass
+                # Convert glob pattern (e.g. "dashboard:orders:*") to a prefix match
+                prefix = pattern.rstrip("*")
+                keys_to_delete = [k for k in list(self.memory_cache.keys()) if str(k).startswith(prefix)]
+                for k in keys_to_delete:
+                    self.memory_cache.pop(k, None)
         except Exception as e:
             print(f"Cache clear pattern error: {e}")
 
