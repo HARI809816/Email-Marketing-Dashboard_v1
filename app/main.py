@@ -1240,7 +1240,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     # 2. Map fields to collections
     client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
     order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks"]
-    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date"]
+    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_2_payment", "phase_2_payment_date", "phase_3_payment", "phase_3_payment_date","paid_amount","order_status","phase_1_detail","phase_2_detail","phase_3_detail","client_drive_link","payment_drive_link"]
 
     # Get the order to verify it exists and find linked client
     try:
