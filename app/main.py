@@ -64,6 +64,7 @@ from app.database import (
 from app.cache import cache_manager, dashboard_cache_key, invalidate_dashboard_cache, invalidate_user_cache
 from app.currency_converter import convert_inr_to_usd, convert_usd_to_inr, get_current_rate_info
 from bson import ObjectId
+from pymongo import UpdateOne
 
 app = FastAPI(title="Email Dashboard API")
 
@@ -1252,7 +1253,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         raise HTTPException(status_code=404, detail="Order not found")
     
     old_client_id = order["client_id"]
-    order_custom_id = order["order_id"] # Internal ORD-xxx string
+    order_custom_id = order["order_id"]
 
     # 3. Perform Updates
     
@@ -1301,7 +1302,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     # Update Payments
     payment_updates_raw = {f: update_dict[f] for f in payment_fields if f in update_dict}
     if payment_updates_raw:
-        # Group by phase
+        # Group by phase and prepare bulk operations
+        bulk_ops = []
         for phase in [1, 2, 3]:
             amt_key = f"phase_{phase}_payment"
             date_key = f"phase_{phase}_payment_date"
@@ -1313,11 +1315,14 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
                 p_updates["payment_date"] = payment_updates_raw[date_key]
             
             if p_updates:
-                payments_collection.update_one(
+                bulk_ops.append(UpdateOne(
                     {"order_id": order_custom_id, "phase": phase},
                     {"$set": p_updates},
-                    upsert=True # Create if doesn't exist for that phase
-                )
+                    upsert=True
+                ))
+        
+        if bulk_ops:
+            payments_collection.bulk_write(bulk_ops)
 
     # Invalidate dashboard cache since data has changed
     invalidate_dashboard_cache()
