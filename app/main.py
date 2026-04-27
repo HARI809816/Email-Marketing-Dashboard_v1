@@ -724,8 +724,8 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                     {
                         "$lookup": {
                             "from": "orders",
-                            "localField": "reference_id",
-                            "foreignField": "reference_id",
+                            "localField": "order_id",
+                            "foreignField": "order_id",
                             "as": "order_info"
                         }
                     },
@@ -737,8 +737,8 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                                 "$sum": {
                                     "$cond": [
                                         {"$eq": ["$order_info.currency", "INR"]},
-                                        {"$multiply": ["$order_info.paid_amount", rate]},
-                                        "$order_info.paid_amount"
+                                        {"$multiply": [{"$ifNull": ["$paid_amount", 0.0]}, rate]},
+                                        {"$ifNull": ["$paid_amount", 0.0]}
                                     ]
                                 }
                             }
