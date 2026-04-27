@@ -182,6 +182,7 @@ class OrderBase(BaseModel):
     payment_status: str = "Pending"
     remarks: Optional[str] = None
     order_status: Optional[str] = None
+    
 
 class OrderCreate(OrderBase):
     pass

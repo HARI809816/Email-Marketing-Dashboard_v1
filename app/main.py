@@ -64,7 +64,7 @@ from app.database import (
 from app.cache import cache_manager, dashboard_cache_key, invalidate_dashboard_cache, invalidate_user_cache
 from app.currency_converter import convert_inr_to_usd, convert_usd_to_inr, get_current_rate_info
 from bson import ObjectId
-from pymongo import UpdateOne
+
 
 app = FastAPI(title="Email Dashboard API")
 
@@ -1146,14 +1146,6 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
             }
         },
         {
-            "$addFields": {
-                # Aggregate payment phases in DB
-                "p1": {"$filter": {"input": "$p_list", "as": "p", "cond": {"$eq": ["$$p.phase", 1]}}},
-                "p2": {"$filter": {"input": "$p_list", "as": "p", "cond": {"$eq": ["$$p.phase", 2]}}},
-                "p3": {"$filter": {"input": "$p_list", "as": "p", "cond": {"$eq": ["$$p.phase", 3]}}}
-            }
-        },
-        {
             "$project": {
                 "_id": 0,
                 "order_db_id": {"$toString": "$order._id"},
@@ -1184,15 +1176,16 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "po_start_date": "$order.po_start_date",
                 "po_end_date": "$order.po_end_date",
                 "phase": {"$literal": None},
-                "phase_1_payment": {"$arrayElemAt": ["$p1.phase_1_payment", 0]},
-                "phase_1_payment_date": {"$arrayElemAt": ["$p1.phase_1_payment_date", 0]},
-                "phase_1_payment_details": {"$arrayElemAt": ["$p1.phase_1_payment_details", 0]},
-                "phase_2_payment": {"$arrayElemAt": ["$p2.phase_2_payment", 0]},
-                "phase_2_payment_date": {"$arrayElemAt": ["$p2.phase_2_payment_date", 0]},
-                "phase_2_payment_details": {"$arrayElemAt": ["$p2.phase_2_payment_details", 0]},
-                "phase_3_payment": {"$arrayElemAt": ["$p3.phase_3_payment", 0]},
-                "phase_3_payment_date": {"$arrayElemAt": ["$p3.phase_3_payment_date", 0]},
-                "phase_3_payment_details": {"$arrayElemAt": ["$p3.phase_3_payment_details", 0]},
+                # All phase fields live in a single payment doc per order — read directly
+                "phase_1_payment": {"$arrayElemAt": ["$p_list.phase_1_payment", 0]},
+                "phase_1_payment_date": {"$arrayElemAt": ["$p_list.phase_1_payment_date", 0]},
+                "phase_1_payment_details": {"$arrayElemAt": ["$p_list.phase_1_payment_details", 0]},
+                "phase_2_payment": {"$arrayElemAt": ["$p_list.phase_2_payment", 0]},
+                "phase_2_payment_date": {"$arrayElemAt": ["$p_list.phase_2_payment_date", 0]},
+                "phase_2_payment_details": {"$arrayElemAt": ["$p_list.phase_2_payment_details", 0]},
+                "phase_3_payment": {"$arrayElemAt": ["$p_list.phase_3_payment", 0]},
+                "phase_3_payment_date": {"$arrayElemAt": ["$p_list.phase_3_payment_date", 0]},
+                "phase_3_payment_details": {"$arrayElemAt": ["$p_list.phase_3_payment_details", 0]},
                 "payment_status": {"$ifNull": ["$order.payment_status", "No Order"]},
                 "paid_amount": {"$ifNull": ["$order.paid_amount", 0.0]},
                 "client_link": "$client_link",
@@ -1241,7 +1234,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     # 2. Map fields to collections
     client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_details", "client_drive_link"]
     order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount"]
-    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details"]
+    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details","payment_status", "paid_amount"]
 
     # Get the order to verify it exists and find linked client
     try:
@@ -1299,26 +1292,14 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         mapped_order_updates["updated_at"] = datetime.utcnow()
         orders_collection.update_one({"_id": ObjectId(order_db_id)}, {"$set": mapped_order_updates})
 
-    # Update Payments
+    # Update Payments — direct field update (same pattern as orders/clients)
     payment_updates_raw = {f: update_dict[f] for f in payment_fields if f in update_dict}
     if payment_updates_raw:
-        # Prepare bulk operations for each phase
-        bulk_ops = []
-        for phase in [1, 2, 3]:
-            phase_updates = {}
-            for field in payment_fields:
-                if field.startswith(f"phase_{phase}_") and field in payment_updates_raw:
-                    phase_updates[field] = payment_updates_raw[field]
-            
-            if phase_updates:
-                bulk_ops.append(UpdateOne(
-                    {"order_id": order_custom_id, "phase": phase},
-                    {"$set": phase_updates},
-                    upsert=True
-                ))
-        
-        if bulk_ops:
-            payments_collection.bulk_write(bulk_ops)
+        payments_collection.update_one(
+            {"order_id": order_custom_id},
+            {"$set": payment_updates_raw},
+            upsert=True
+        )
 
     # Invalidate dashboard cache since data has changed
     invalidate_dashboard_cache()
@@ -1456,6 +1437,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "payment_received_account": request.payment_received_account,
             "payment_date": request.payment_date or datetime.utcnow().date().isoformat(),
             "status": "paid",
+            "paid_amount": request.payment_amount,
             "created_at": datetime.utcnow()
         }
 
