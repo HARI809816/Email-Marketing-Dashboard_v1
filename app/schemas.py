@@ -38,7 +38,7 @@ class UserCreate(UserBase):
     email: Optional[EmailStr] = None
     phone_number: Optional[str] = None
     branch: Optional[str] = None
-    profile_name: Optional[str] = None
+    profile_names: list[str] = Field(default_factory=list)
     password: str
     permissions: Optional[dict[str, list[str]]] = Field(default_factory=lambda: {"dashboard": []})
     role: UserRole = UserRole.MANAGER
@@ -46,6 +46,11 @@ class UserCreate(UserBase):
 class PermissionUpdate(BaseModel):
     email: EmailStr
     permissions: dict[str, list[str]]
+
+class ProfileUpdate(BaseModel):
+    email: EmailStr
+    profile_name: str
+    new_profile_name: Optional[str] = None  # Only required for 'update' operation
 
 class UserResponse(UserBase):
     id: str = Field(..., alias="_id")
@@ -55,10 +60,11 @@ class UserResponse(UserBase):
         populate_by_name = True
 
 class DashboardStats(BaseModel):
-    overall_amount: float = 0.0
-    overall_amount_percentage: float = 0.0
+    total_amount: float = 0.0
+    paid_amount: float = 0.0
+    remaining_amount: float = 0.0
     total_clients: int = 0
-    total_clients_percentage: float = 0.0
+    total_clients_percentage: float = 100.0
     pending_count: int = 0
     pending_count_percentage: float = 0.0
     reject_count: int = 0
@@ -198,6 +204,7 @@ class OrderResponse(OrderBase):
 class PaymentBase(BaseModel):
     client_ref_number: Optional[str] = None
     reference_id: Optional[str] = None  # Copied from order for easy lookup
+    order_id: Optional[str] = None
     client_id: str # Ref to Client
     phase: int = 1
     amount: float = 0.0

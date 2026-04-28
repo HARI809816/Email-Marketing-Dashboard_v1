@@ -25,6 +25,7 @@ from app.schemas import (
     LoginResponse,
     OTPVerifyRequest,
     PermissionUpdate,
+    ProfileUpdate,
     DashboardUpdate,
     ApiResponse,
     ClientAssignRequest,
@@ -629,6 +630,69 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
         "data": None
     }
 
+@app.post("/users/profiles/append", response_model=ApiResponse[dict])
+def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
+    """Append a new profile name to a user's list."""
+    target_user = users_collection.find_one({"email": data.email})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    users_collection.update_one(
+        {"email": data.email},
+        {"$addToSet": {"profile_names": data.profile_name}}
+    )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Profile '{data.profile_name}' added to {data.email}",
+        "data": None
+    }
+
+@app.put("/users/profiles/update", response_model=ApiResponse[dict])
+def update_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
+    """Update an existing profile name in a user's list."""
+    if not data.new_profile_name:
+        raise HTTPException(status_code=400, detail="new_profile_name is required for update")
+        
+    target_user = users_collection.find_one({"email": data.email})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Atomic update of specific element in array
+    result = users_collection.update_one(
+        {"email": data.email, "profile_names": data.profile_name},
+        {"$set": {"profile_names.$": data.new_profile_name}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"Profile '{data.profile_name}' not found for this user")
+
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Profile '{data.profile_name}' updated to '{data.new_profile_name}'",
+        "data": None
+    }
+
+@app.delete("/users/profiles/remove", response_model=ApiResponse[dict])
+def remove_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
+    """Remove a profile name from a user's list."""
+    target_user = users_collection.find_one({"email": data.email})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    users_collection.update_one(
+        {"email": data.email},
+        {"$pull": {"profile_names": data.profile_name}}
+    )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Profile '{data.profile_name}' removed from {data.email}",
+        "data": None
+    }
+
+
 @app.get("/users/me/details", response_model=ApiResponse[UserDetailResponse])
 def get_own_details(current_user: dict = Depends(get_current_user)):
     """
@@ -664,6 +728,33 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                 "let": {"cid": "$client_id"},
                 "pipeline": [
                     {"$match": {"$expr": {"$eq": ["$client_id", "$$cid"]}}},
+                    {
+                        "$lookup": {
+                            "from": "payments",
+                            "localField": "order_id",
+                            "foreignField": "order_id",
+                            "as": "order_payments"
+                        }
+                    },
+                    {
+                        "$addFields": {
+                            "order_paid": {
+                                "$sum": {
+                                    "$map": {
+                                        "input": "$order_payments",
+                                        "as": "p",
+                                        "in": {
+                                            "$cond": [
+                                                {"$eq": ["$currency", "INR"]},
+                                                {"$multiply": [{"$ifNull": ["$$p.paid_amount", 0.0]}, rate]},
+                                                {"$ifNull": ["$$p.paid_amount", 0.0]}
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
                     {
                         "$group": {
                             "_id": None,
@@ -703,6 +794,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                                     ]
                                 }
                             },
+                            "paid_amount": {"$sum": "$order_paid"},
                             "order_count": {"$sum": 1},
                             "payment_status": {"$first": "$payment_status"},
                             "pending_order_count": {
@@ -711,57 +803,23 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                         }
                     }
                 ],
-                "as": "order_stats"
+                "as": "stats"
             }
         },
-        {"$unwind": {"path": "$order_stats", "preserveNullAndEmptyArrays": True}},
-        {
-            "$lookup": {
-                "from": "payments",
-                "let": {"cid": "$client_id"},
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$client_id", "$$cid"]}}},
-                    {
-                        "$lookup": {
-                            "from": "orders",
-                            "localField": "order_id",
-                            "foreignField": "order_id",
-                            "as": "order_info"
-                        }
-                    },
-                    {"$unwind": {"path": "$order_info", "preserveNullAndEmptyArrays": True}},
-                    {
-                        "$group": {
-                            "_id": None,
-                            "paid_amount": {
-                                "$sum": {
-                                    "$cond": [
-                                        {"$eq": ["$order_info.currency", "INR"]},
-                                        {"$multiply": [{"$ifNull": ["$paid_amount", 0.0]}, rate]},
-                                        {"$ifNull": ["$paid_amount", 0.0]}
-                                    ]
-                                }
-                            }
-                        }
-                    }
-                ],
-                "as": "payment_stats"
-            }
-        },
-        {"$unwind": {"path": "$payment_stats", "preserveNullAndEmptyArrays": True}},
+        {"$unwind": {"path": "$stats", "preserveNullAndEmptyArrays": True}},
         {
             "$addFields": {
-                "total_amount": {"$ifNull": ["$order_stats.total_amount", 0.0]},
-                "writing_amount": {"$ifNull": ["$order_stats.writing_amount", 0.0]},
-                "modification_amount": {"$ifNull": ["$order_stats.modification_amount", 0.0]},
-                "po_amount": {"$ifNull": ["$order_stats.po_amount", 0.0]},
-                "paid_amount": {"$ifNull": ["$payment_stats.paid_amount", 0.0]},
-                "order_count": {"$ifNull": ["$order_stats.order_count", 0]},
-                "payment_status": {"$ifNull": ["$order_stats.payment_status", "No Order"]},
-                "pending_order_count": {"$ifNull": ["$order_stats.pending_order_count", 0]}
+                "total_amount": {"$ifNull": ["$stats.total_amount", 0.0]},
+                "writing_amount": {"$ifNull": ["$stats.writing_amount", 0.0]},
+                "modification_amount": {"$ifNull": ["$stats.modification_amount", 0.0]},
+                "po_amount": {"$ifNull": ["$stats.po_amount", 0.0]},
+                "paid_amount": {"$ifNull": ["$stats.paid_amount", 0.0]},
+                "order_count": {"$ifNull": ["$stats.order_count", 0]},
+                "payment_status": {"$ifNull": ["$stats.payment_status", "No Order"]},
+                "pending_order_count": {"$ifNull": ["$stats.pending_order_count", 0]}
             }
         },
-        {"$project": {"order_stats": 0, "payment_stats": 0}}
+        {"$project": {"stats": 0}}
     ]
     
     clients_with_stats = list(clients_collection.aggregate(pipeline))
@@ -784,7 +842,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     for c in clients_with_stats:
         # Calculate country split for Pie Chart
         country = c.get("country") or "Unknown"
-        country_split[country] = country_split.get(country, 0.0) + c.get("paid_amount", 0.0)
+        country_split[country] = round(country_split.get(country, 0.0) + c.get("paid_amount", 0.0), 2)
         
         # Pull global stats from client totals
         total_system_amount += c["total_amount"]
@@ -804,12 +862,12 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
 
     # 3. Calculate Dashboard Stats
     total_clients_count = len(clients_with_stats)
-    overall_amt_pct = (total_system_paid / total_system_amount * 100) if total_system_amount > 0 else 0.0
     pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
     
     dashboard_stats = {
-        "overall_amount": total_system_paid,
-        "overall_amount_percentage": round(overall_amt_pct, 1),
+        "total_amount": round(total_system_amount, 2),
+        "paid_amount": round(total_system_paid, 2),
+        "remaining_amount": round(total_system_amount - total_system_paid, 2),
         "total_clients": total_clients_count,
         "total_clients_percentage": 100.0, 
         "pending_count": total_system_pending,
