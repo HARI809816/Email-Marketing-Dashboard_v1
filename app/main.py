@@ -631,7 +631,7 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
     }
 
 @app.post("/users/profiles/append", response_model=ApiResponse[dict])
-def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
+def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(get_current_user)):
     """Append a new profile name to a user's list."""
     target_user = users_collection.find_one({"email": data.email})
     if not target_user:
@@ -648,49 +648,49 @@ def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(requir
         "data": None
     }
 
-@app.put("/users/profiles/update", response_model=ApiResponse[dict])
-def update_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
-    """Update an existing profile name in a user's list."""
-    if not data.new_profile_name:
-        raise HTTPException(status_code=400, detail="new_profile_name is required for update")
+# @app.put("/users/profiles/update", response_model=ApiResponse[dict])
+# def update_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
+#     """Update an existing profile name in a user's list."""
+#     if not data.new_profile_name:
+#         raise HTTPException(status_code=400, detail="new_profile_name is required for update")
         
-    target_user = users_collection.find_one({"email": data.email})
-    if not target_user:
-        raise HTTPException(status_code=404, detail="User not found")
+#     target_user = users_collection.find_one({"email": data.email})
+#     if not target_user:
+#         raise HTTPException(status_code=404, detail="User not found")
         
-    # Atomic update of specific element in array
-    result = users_collection.update_one(
-        {"email": data.email, "profile_names": data.profile_name},
-        {"$set": {"profile_names.$": data.new_profile_name}}
-    )
+#     # Atomic update of specific element in array
+#     result = users_collection.update_one(
+#         {"email": data.email, "profile_names": data.profile_name},
+#         {"$set": {"profile_names.$": data.new_profile_name}}
+#     )
     
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail=f"Profile '{data.profile_name}' not found for this user")
+#     if result.matched_count == 0:
+#         raise HTTPException(status_code=404, detail=f"Profile '{data.profile_name}' not found for this user")
 
-    return {
-        "status_code": 200,
-        "status": "success",
-        "message": f"Profile '{data.profile_name}' updated to '{data.new_profile_name}'",
-        "data": None
-    }
+#     return {
+#         "status_code": 200,
+#         "status": "success",
+#         "message": f"Profile '{data.profile_name}' updated to '{data.new_profile_name}'",
+#         "data": None
+#     }
 
-@app.delete("/users/profiles/remove", response_model=ApiResponse[dict])
-def remove_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
-    """Remove a profile name from a user's list."""
-    target_user = users_collection.find_one({"email": data.email})
-    if not target_user:
-        raise HTTPException(status_code=404, detail="User not found")
+# @app.delete("/users/profiles/remove", response_model=ApiResponse[dict])
+# def remove_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
+#     """Remove a profile name from a user's list."""
+#     target_user = users_collection.find_one({"email": data.email})
+#     if not target_user:
+#         raise HTTPException(status_code=404, detail="User not found")
     
-    users_collection.update_one(
-        {"email": data.email},
-        {"$pull": {"profile_names": data.profile_name}}
-    )
-    return {
-        "status_code": 200,
-        "status": "success",
-        "message": f"Profile '{data.profile_name}' removed from {data.email}",
-        "data": None
-    }
+#     users_collection.update_one(
+#         {"email": data.email},
+#         {"$pull": {"profile_names": data.profile_name}}
+#     )
+#     return {
+#         "status_code": 200,
+#         "status": "success",
+#         "message": f"Profile '{data.profile_name}' removed from {data.email}",
+#         "data": None
+#     }
 
 
 @app.get("/users/me/details", response_model=ApiResponse[UserDetailResponse])
