@@ -102,9 +102,7 @@ class ClientBase(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     affiliation: Optional[str] = None
-    clients_details: Optional[str] = None  # New field for detailed client information
-    client_drive_link: Optional[str] = None  # New field for client drive link
-    payment_drive_link: Optional[str] = None  # New field - SOURCE for orders payment_drive_link
+    
     total_orders: int = 0
     client_handler: Optional[str] = None  # Stores employee EMAIL (unique reference)
     client_handler_name: Optional[str] = None  # Resolved full name for display (not stored in DB)
@@ -182,6 +180,9 @@ class OrderBase(BaseModel):
     payment_status: str = "Pending"
     remarks: Optional[str] = None
     order_status: Optional[str] = None
+    clients_details: Optional[str] = None  # New field for detailed client information
+    client_drive_link: Optional[str] = None  # New field for client drive link
+    payment_drive_link: Optional[str] = None  # New field - SOURCE for orders payment_drive_link
     
 
 class OrderCreate(OrderBase):
@@ -271,7 +272,7 @@ class DashboardOrderResponse(BaseModel):
     remarks: Optional[str] = None
     client_drive_link: Optional[str] = None
     payment_drive_link: Optional[str] = None
-    client_details: Optional[str] = None
+    clients_details: Optional[str] = None
     amount: Optional[float] = None
     order_status: Optional[str] = None
     paid_amount: Optional[float] = 0.0
@@ -298,7 +299,7 @@ class DashboardUpdate(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None
-    client_details: Optional[str] = None
+    clients_details: Optional[str] = None
     client_drive_link: Optional[str] = None
     
     

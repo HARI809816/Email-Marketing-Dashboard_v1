@@ -1343,9 +1343,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "client_link": request.client_link,
             "bank_account": request.client_bank_account,
             "affiliation": request.client_affiliation,
-            "clients_details": request.clients_details,
-            "client_drive_link": request.client_drive_link,
-            "payment_drive_link": request.payment_drive_link,  # Store in client as source
+            
             "total_orders": 0,
             "client_handler": current_user.get("email") if current_user["role"] == UserRole.EMPLOYEE else get_user_email_by_name(request.client_handler),
             "created_at": datetime.utcnow()
@@ -1419,6 +1417,9 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         "payment_status": request.payment_status,
         "payment_drive_link": client_payment_drive_link,  # From client's payment_drive_link
         "remarks": None,
+        "clients_details": request.clients_details,
+        "client_drive_link": request.client_drive_link,
+        "payment_drive_link": request.payment_drive_link,  # Store in client as source
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
