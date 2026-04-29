@@ -787,6 +787,9 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                             "payment_status": {"$first": "$payment_status"},
                             "pending_order_count": {
                                 "$sum": {"$cond": [{"$eq": ["$payment_status", "Pending"]}, 1, 0]}
+                            },
+                            "reject_order_count": {
+                                "$sum": {"$cond": [{"$eq": ["$order_status", "Inactive"]}, 1, 0]}
                             }
                         }
                     }
@@ -804,7 +807,8 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                 "paid_amount": {"$ifNull": ["$stats.paid_amount", 0.0]},
                 "order_count": {"$ifNull": ["$stats.order_count", 0]},
                 "payment_status": {"$ifNull": ["$stats.payment_status", "No Order"]},
-                "pending_order_count": {"$ifNull": ["$stats.pending_order_count", 0]}
+                "pending_order_count": {"$ifNull": ["$stats.pending_order_count", 0]},
+                "reject_order_count": {"$ifNull": ["$stats.reject_order_count", 0]}
             }
         },
         {"$project": {"stats": 0}}
@@ -826,6 +830,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     total_system_paid = 0.0
     total_system_orders = 0
     total_system_pending = 0
+    total_system_rejects = 0
     
     for c in clients_with_stats:
         # Calculate country split for Pie Chart
@@ -837,6 +842,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         total_system_paid += c["paid_amount"]
         total_system_orders += c["order_count"]
         total_system_pending += c["pending_order_count"]
+        total_system_rejects += c.get("reject_order_count", 0)
 
         # print(c["client_id"])   
         # print(c["total_amount"])
@@ -846,6 +852,7 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         c.pop("payments", None)
         c.pop("order_count", None)
         c.pop("pending_order_count", None)
+        c.pop("reject_order_count", None)
         handled_clients.append(c)
 
     # 3. Calculate Dashboard Stats
@@ -860,8 +867,8 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         "total_clients_percentage": 100.0, 
         "pending_count": total_system_pending,
         "pending_count_percentage": round(pending_pct, 1),
-        "reject_count": 0, 
-        "reject_count_percentage": 0.0
+        "reject_count": total_system_rejects, 
+        "reject_count_percentage": round((total_system_rejects / total_system_orders * 100), 1) if total_system_orders > 0 else 0.0
     }
     
     user_data = format_mongo_id(current_user.copy())
