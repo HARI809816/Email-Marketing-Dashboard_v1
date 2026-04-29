@@ -96,6 +96,9 @@ def invalidate_dashboard_cache():
     """Invalidate all dashboard caches"""
     cache_manager.clear_pattern("dashboard:orders:*")
 
-def invalidate_user_cache(email: str):
-    """Invalidate user cache"""
-    cache_manager.delete(user_cache_key(email))
+def invalidate_user_cache(email: Optional[str] = None):
+    """Invalidate user cache. If email is None, invalidates all user caches."""
+    if email:
+        cache_manager.delete(user_cache_key(email))
+    else:
+        cache_manager.clear_pattern("user:data:*")

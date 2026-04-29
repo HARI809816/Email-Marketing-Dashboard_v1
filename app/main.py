@@ -522,6 +522,9 @@ def update_own_password(data: PasswordUpdate, current_user: dict = Depends(get_c
         {"email": current_user["email"]},
         {"$set": {"password": hashed_password}}
     )
+    # Invalidate user cache since password changed
+    invalidate_user_cache(current_user["email"])
+    
     return {
         "status_code": 200,
         "status": "success",
@@ -561,6 +564,9 @@ def update_user_password(data: AdminPasswordUpdate, current_user: dict = Depends
         {"email": data.email},
         {"$set": {"password": hashed_password}}
     )
+    # Invalidate user cache since password changed
+    invalidate_user_cache(data.email)
+    
     return {
         "status_code": 200,
         "status": "success",
@@ -623,6 +629,9 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
         {"email": data.email},
         {"$set": {"permissions": data.permissions}}
     )
+    # Invalidate user cache since permissions changed
+    invalidate_user_cache(data.email)
+    
     return {
         "status_code": 200,
         "status": "success",
@@ -641,6 +650,9 @@ def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(get_cu
         {"email": data.email},
         {"$addToSet": {"profile_names": data.profile_name}}
     )
+    # Invalidate user cache since profiles changed
+    invalidate_user_cache(data.email)
+    
     return {
         "status_code": 200,
         "status": "success",
@@ -944,8 +956,8 @@ def create_client(client: ClientCreate, current_user: dict = Depends(get_current
     result = clients_collection.insert_one(client_dict)
     client_dict["_id"] = str(result.inserted_id)
     
-    # Invalidate user cache since handled clients changed
-    invalidate_user_cache(current_user.get("email"))
+    # Invalidate caches since handled clients changed
+    invalidate_user_cache() 
     invalidate_dashboard_cache()
     
     return {
@@ -1027,6 +1039,10 @@ def assign_client(request: ClientAssignRequest, current_user: dict = Depends(req
         {"$set": {"client_handler": employee.get("email")}}
     )
     
+    # Invalidate caches since client handler changed
+    invalidate_user_cache(employee.get("email"))
+    invalidate_dashboard_cache()
+    
     # Fetch updated client
     updated_client = clients_collection.find_one({"client_id": request.client_id})
     
@@ -1049,6 +1065,10 @@ def create_manuscript(manuscript: ManuscriptCreate, current_user: dict = Depends
     ms_dict["created_at"] = datetime.utcnow()
     result = manuscripts_collection.insert_one(ms_dict)
     ms_dict["_id"] = str(result.inserted_id)
+    # Invalidate caches since manuscripts might be displayed in dashboard
+    invalidate_user_cache()
+    invalidate_dashboard_cache()
+    
     return {
         "status_code": 201,
         "status": "success",
@@ -1095,6 +1115,7 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
     order_dict["_id"] = str(result.inserted_id)
     
     # Invalidate caches since data changed
+    invalidate_user_cache()
     invalidate_dashboard_cache()
     
     return {
@@ -1132,6 +1153,7 @@ def create_payment(payment: PaymentCreate, current_user: dict = Depends(require_
     pay_dict["_id"] = str(result.inserted_id)
     
     # Invalidate caches since data changed
+    invalidate_user_cache()
     invalidate_dashboard_cache()
     
     return {
@@ -1361,7 +1383,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
 
     # Invalidate dashboard cache since data has changed
     invalidate_dashboard_cache()
-    invalidate_user_cache(current_user.get("email"))
+    # Invalidate ALL user caches to ensure all handlers see the updated stats
+    invalidate_user_cache() 
 
     return {
         "status_code": 200,
@@ -1522,7 +1545,8 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
 
     # Invalidate dashboard cache since new data was created
     invalidate_dashboard_cache()
-    invalidate_user_cache(current_user.get("email"))
+    # Invalidate ALL user caches to ensure all handlers see the new stats
+    invalidate_user_cache() 
 
     # Return comprehensive response
     return {
