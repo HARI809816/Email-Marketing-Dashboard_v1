@@ -62,7 +62,7 @@ from app.database import (
     payments_collection,
     otps_collection
 )
-from app.cache import cache_manager, dashboard_cache_key, invalidate_dashboard_cache, invalidate_user_cache
+
 from app.currency_converter import convert_inr_to_usd, convert_usd_to_inr, get_current_rate_info
 from bson import ObjectId
 
@@ -522,9 +522,6 @@ def update_own_password(data: PasswordUpdate, current_user: dict = Depends(get_c
         {"email": current_user["email"]},
         {"$set": {"password": hashed_password}}
     )
-    # Invalidate user cache since password changed
-    invalidate_user_cache(current_user["email"])
-    
     return {
         "status_code": 200,
         "status": "success",
@@ -564,9 +561,6 @@ def update_user_password(data: AdminPasswordUpdate, current_user: dict = Depends
         {"email": data.email},
         {"$set": {"password": hashed_password}}
     )
-    # Invalidate user cache since password changed
-    invalidate_user_cache(data.email)
-    
     return {
         "status_code": 200,
         "status": "success",
@@ -629,9 +623,6 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
         {"email": data.email},
         {"$set": {"permissions": data.permissions}}
     )
-    # Invalidate user cache since permissions changed
-    invalidate_user_cache(data.email)
-    
     return {
         "status_code": 200,
         "status": "success",
@@ -650,9 +641,6 @@ def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(get_cu
         {"email": data.email},
         {"$addToSet": {"profile_names": data.profile_name}}
     )
-    # Invalidate user cache since profiles changed
-    invalidate_user_cache(data.email)
-    
     return {
         "status_code": 200,
         "status": "success",
@@ -711,18 +699,6 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     Get current user profile details including nested handled clients and dashboard stats.
     Optimized with MongoDB Aggregation Pipeline and caching.
     """
-    # Check cache first
-    from app.cache import user_cache_key
-    cache_key = user_cache_key(current_user.get("email"))
-    cached_data = cache_manager.get(cache_key)
-    if cached_data:
-        return {
-            "status_code": 200,
-            "status": "success",
-            "message": "User details fetched from cache",
-            "data": cached_data
-        }
-    
     from app.currency_converter import get_inr_to_usd_rate
     rate = get_inr_to_usd_rate() or 0.012
 
@@ -894,9 +870,6 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     user_data["dashboard_stats"] = dashboard_stats
     user_data["country_split"] = country_split
     
-    # Cache the result for 5 minutes
-    cache_manager.set(cache_key, user_data, ttl=300)
-    
     return {
         "status_code": 200,
         "status": "success",
@@ -956,9 +929,7 @@ def create_client(client: ClientCreate, current_user: dict = Depends(get_current
     result = clients_collection.insert_one(client_dict)
     client_dict["_id"] = str(result.inserted_id)
     
-    # Invalidate caches since handled clients changed
-    invalidate_user_cache() 
-    invalidate_dashboard_cache()
+
     
     return {
         "status_code": 201,
@@ -1039,9 +1010,7 @@ def assign_client(request: ClientAssignRequest, current_user: dict = Depends(req
         {"$set": {"client_handler": employee.get("email")}}
     )
     
-    # Invalidate caches since client handler changed
-    invalidate_user_cache(employee.get("email"))
-    invalidate_dashboard_cache()
+
     
     # Fetch updated client
     updated_client = clients_collection.find_one({"client_id": request.client_id})
@@ -1065,9 +1034,7 @@ def create_manuscript(manuscript: ManuscriptCreate, current_user: dict = Depends
     ms_dict["created_at"] = datetime.utcnow()
     result = manuscripts_collection.insert_one(ms_dict)
     ms_dict["_id"] = str(result.inserted_id)
-    # Invalidate caches since manuscripts might be displayed in dashboard
-    invalidate_user_cache()
-    invalidate_dashboard_cache()
+
     
     return {
         "status_code": 201,
@@ -1114,9 +1081,7 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
     result = orders_collection.insert_one(order_dict)
     order_dict["_id"] = str(result.inserted_id)
     
-    # Invalidate caches since data changed
-    invalidate_user_cache()
-    invalidate_dashboard_cache()
+
     
     return {
         "status_code": 201,
@@ -1152,9 +1117,7 @@ def create_payment(payment: PaymentCreate, current_user: dict = Depends(require_
     result = payments_collection.insert_one(pay_dict)
     pay_dict["_id"] = str(result.inserted_id)
     
-    # Invalidate caches since data changed
-    invalidate_user_cache()
-    invalidate_dashboard_cache()
+
     
     return {
         "status_code": 201,
@@ -1188,17 +1151,6 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     Shows clients even if no orders exist.
     Includes caching for improved performance.
     """
-    # Check cache first
-    cache_key = dashboard_cache_key(current_user.get("email"), current_user["role"])
-    cached_data = cache_manager.get(cache_key)
-    if cached_data:
-        return {
-            "status_code": 200,
-            "status": "success",
-            "message": "Dashboard data fetched from cache",
-            "data": cached_data
-        }
-
     # 1. Get filtered clients query
     client_match = {}
     if current_user["role"] == UserRole.EMPLOYEE:
@@ -1284,9 +1236,6 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     
     # Resolve handler names for display in bulk
     resolve_client_handler_bulk(dashboard_data)
-    
-    # Cache the result
-    cache_manager.set(cache_key, dashboard_data)
     
     return {
         "status_code": 200,
@@ -1381,10 +1330,6 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             upsert=True
         )
 
-    # Invalidate dashboard cache since data has changed
-    invalidate_dashboard_cache()
-    # Invalidate ALL user caches to ensure all handlers see the updated stats
-    invalidate_user_cache() 
 
     return {
         "status_code": 200,
@@ -1543,10 +1488,6 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         {"$inc": {"total_orders": 1}}
     )
 
-    # Invalidate dashboard cache since new data was created
-    invalidate_dashboard_cache()
-    # Invalidate ALL user caches to ensure all handlers see the new stats
-    invalidate_user_cache() 
 
     # Return comprehensive response
     return {

@@ -2,27 +2,17 @@ import requests
 import os
 from datetime import datetime, timedelta
 from typing import Optional
-from app.cache import cache_manager
 
 EXCHANGE_RATE_API_URL = "https://api.exchangerate-api.com/v4/latest/INR"
-EXCHANGE_RATE_CACHE_KEY = "exchange_rate:inr_to_usd"
-EXCHANGE_RATE_CACHE_TTL = 3600  # 1 hour
 
 def get_inr_to_usd_rate() -> Optional[float]:
     """
     Fetch the current INR to USD exchange rate.
-    Caches the rate for 1 hour to avoid excessive API calls.
     
     Returns:
         float: The exchange rate (1 INR = ? USD)
         None: If the API call fails
     """
-    # Check cache first
-    cached_rate = cache_manager.get(EXCHANGE_RATE_CACHE_KEY)
-    if cached_rate is not None:
-        print(f"✅ Using cached exchange rate: 1 INR = {cached_rate} USD")
-        return cached_rate
-    
     try:
         print("[Currency] Fetching current INR to USD exchange rate...")
         response = requests.get(EXCHANGE_RATE_API_URL, timeout=5)
@@ -35,9 +25,7 @@ def get_inr_to_usd_rate() -> Optional[float]:
             print("❌ USD rate not found in API response")
             return None
         
-        # Cache the rate for 1 hour
-        cache_manager.set(EXCHANGE_RATE_CACHE_KEY, rate, ttl=EXCHANGE_RATE_CACHE_TTL)
-        print(f"✅ Exchange rate fetched and cached: 1 INR = {rate} USD")
+        print(f"✅ Exchange rate fetched: 1 INR = {rate} USD")
         return rate
         
     except requests.exceptions.Timeout:
@@ -63,8 +51,7 @@ def convert_inr_to_usd(amount_inr: float) -> Optional[dict]:
             "amount_inr": float,
             "amount_usd": float,
             "rate": float,
-            "timestamp": str,
-            "cached": bool
+            "timestamp": str
         }
         None: If exchange rate fetch fails
     """
@@ -82,8 +69,7 @@ def convert_inr_to_usd(amount_inr: float) -> Optional[dict]:
         "amount_inr": amount_inr,
         "amount_usd": amount_usd,
         "rate": rate,
-        "timestamp": datetime.utcnow().isoformat(),
-        "cached": cache_manager.get(EXCHANGE_RATE_CACHE_KEY) is not None
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 
@@ -99,8 +85,7 @@ def convert_usd_to_inr(amount_usd: float) -> Optional[dict]:
             "amount_usd": float,
             "amount_inr": float,
             "rate": float,
-            "timestamp": str,
-            "cached": bool
+            "timestamp": str
         }
         None: If exchange rate fetch fails
     """
@@ -118,8 +103,7 @@ def convert_usd_to_inr(amount_usd: float) -> Optional[dict]:
         "amount_usd": amount_usd,
         "amount_inr": amount_inr,
         "rate": rate,
-        "timestamp": datetime.utcnow().isoformat(),
-        "cached": cache_manager.get(EXCHANGE_RATE_CACHE_KEY) is not None
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 
@@ -132,8 +116,7 @@ def get_current_rate_info() -> Optional[dict]:
             "rate": float,
             "from_currency": "INR",
             "to_currency": "USD",
-            "timestamp": str,
-            "cached": bool
+            "timestamp": str
         }
     """
     rate = get_inr_to_usd_rate()
@@ -144,6 +127,5 @@ def get_current_rate_info() -> Optional[dict]:
         "rate": rate,
         "from_currency": "INR",
         "to_currency": "USD",
-        "timestamp": datetime.utcnow().isoformat(),
-        "cached": cache_manager.get(EXCHANGE_RATE_CACHE_KEY) is not None
+        "timestamp": datetime.utcnow().isoformat()
     }
