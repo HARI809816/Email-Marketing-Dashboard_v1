@@ -335,7 +335,6 @@ class DashboardUpdate(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None
-    clients_details: Optional[str] = None
     client_drive_link: Optional[str] = None
     
     
@@ -362,6 +361,7 @@ class DashboardUpdate(BaseModel):
     po_end_date: Optional[datetime] = None
     payment_status: Optional[str] = None
     remarks: Optional[str] = None
+    client_details: Optional[str] = None
 
     # PAYMENT FIELDS (Updates the first payment record for simplicity or we can expand)
     phase_1_payment: Optional[float] = None

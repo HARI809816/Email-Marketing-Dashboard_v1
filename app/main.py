@@ -1282,7 +1282,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "remarks": "$order.remarks",
                 "order_status": "$order.order_status",
                 "client_drive_link": "$client_drive_link",
-                "payment_drive_link": "$payment_drive_link"
+                "payment_drive_link": "$payment_drive_link",
+                "client_details": "$client_details"
             }
         }
     ]
