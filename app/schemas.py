@@ -387,7 +387,7 @@ class UnifiedCreateRequest(BaseModel):
     client_id: str
     client_name: str
     client_country: Optional[str] = None
-    client_email: Optional[EmailStr] = None
+    client_email: Optional[str] = None
     client_whatsapp_no: Optional[str] = None
     client_ref_no: Optional[str] = None
     client_link: Optional[str] = None
@@ -399,6 +399,7 @@ class UnifiedCreateRequest(BaseModel):
     clients_details: Optional[str] = None  # New field for detailed client information
     client_details: Optional[str] = None  # Fallback for UI compatibility
     client_drive_link: Optional[str] = None  # New field for client drive link
+    payment_drive_link: Optional[str] = None  # New field for payment drive link
     client_handler: Optional[str] = None  # For admin/manager to assign a handler
     order_date: Optional[str] = None
     reference_id: str
