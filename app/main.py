@@ -1240,6 +1240,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "s_no": "$order.s_no",
                 "order_date": "$order.order_date",
                 "client_id": "$client_id",
+                "client_name": "$name",
                 "client_country": "$country",
                 "client_Email": "$email",
                 "client_whatsapp_number": "$whatsapp_no",
@@ -1282,7 +1283,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "remarks": "$order.remarks",
                 "order_status": "$order.order_status",
                 "clients_details": {"$ifNull": ["$order.clients_details", "$order.client_details"]},
-                "client_drive_link": {"$ifNull": ["$order.client_drive_link", "$order.client_drive_link"]} # Just in case
+                "client_drive_link": {"$ifNull": ["$order.client_drive_link", "$client_drive_link"]},
+                "payment_drive_link": {"$ifNull": ["$order.payment_drive_link", "$payment_drive_link"]}
             }
         }
     ]
