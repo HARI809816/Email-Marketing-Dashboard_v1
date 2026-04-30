@@ -88,6 +88,7 @@ class OrderStatusDetail(BaseModel):
     paid_amount: Optional[float] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     order_date: datetime = Field(default_factory=datetime.utcnow)
+    country: Optional[str] = None
 
 class UserDetailResponse(UserResponse):
     country_based_details: list[CountryStats] = []

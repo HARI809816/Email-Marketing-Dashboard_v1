@@ -857,6 +857,7 @@ def get_user_dashboard_data(client_match: dict):
                 "reference_id": order.get("reference_id"),
                 "order_status": order.get("order_status"),
                 "payment_status": order.get("payment_status"),
+                "country": c.get("country"),        
                 "paid_amount": round(order.get("paid_amount", 0.0), 2),
                 "created_at": order.get("created_at"),
                 "order_date": order.get("order_date")
