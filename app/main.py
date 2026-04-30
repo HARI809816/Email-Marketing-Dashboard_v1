@@ -1281,9 +1281,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "client_handler": "$client_handler",
                 "remarks": "$order.remarks",
                 "order_status": "$order.order_status",
-                "client_drive_link": "$client_drive_link",
-                "payment_drive_link": "$payment_drive_link",
-                "client_details": "$client_details"
+                "clients_details": {"$ifNull": ["$order.clients_details", "$order.client_details"]},
+                "client_drive_link": {"$ifNull": ["$order.client_drive_link", "$order.client_drive_link"]} # Just in case
             }
         }
     ]
@@ -1317,8 +1316,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         }
 
     # 2. Map fields to collections
-    client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_details", "client_drive_link"]
-    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount"]
+    client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
+    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount", "clients_details", "client_details", "client_drive_link"]
     payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details","payment_status", "paid_amount"]
 
     # Get the order to verify it exists and find linked client
@@ -1371,7 +1370,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     if order_updates:
         # Map dashboard field names back to order collection names if different
         mapped_order_updates = {}
-        mapping = {"ref_no": "client_ref_no"}
+        mapping = {"ref_no": "client_ref_no", "client_details": "clients_details"}
         for k, v in order_updates.items():
             mapped_order_updates[mapping.get(k, k)] = v
         mapped_order_updates["updated_at"] = datetime.utcnow()
@@ -1497,11 +1496,10 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         "po_start_date": None,
         "po_end_date": None,
         "payment_status": request.payment_status,
-        "payment_drive_link": client_payment_drive_link,  # From client's payment_drive_link
-        "remarks": None,
-        "clients_details": request.clients_details,
+        "payment_drive_link": request.payment_drive_link,
+        "clients_details": request.clients_details or getattr(request, 'client_details', None),
         "client_drive_link": request.client_drive_link,
-        "payment_drive_link": request.payment_drive_link,  # Store in client as source
+        "remarks": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }

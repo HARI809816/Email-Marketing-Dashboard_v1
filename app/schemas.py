@@ -335,7 +335,6 @@ class DashboardUpdate(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None
-    client_drive_link: Optional[str] = None
     
     
     # ORDER FIELDS
@@ -361,7 +360,9 @@ class DashboardUpdate(BaseModel):
     po_end_date: Optional[datetime] = None
     payment_status: Optional[str] = None
     remarks: Optional[str] = None
-    client_details: Optional[str] = None
+    clients_details: Optional[str] = None
+    client_details: Optional[str] = None  # Fallback for UI compatibility
+    client_drive_link: Optional[str] = None
 
     # PAYMENT FIELDS (Updates the first payment record for simplicity or we can expand)
     phase_1_payment: Optional[float] = None
@@ -392,12 +393,12 @@ class UnifiedCreateRequest(BaseModel):
     client_link: Optional[str] = None
     client_bank_account: Optional[str] = None
     client_affiliation: Optional[str] = None
-    clients_details: Optional[str] = None  # New field for detailed client information
-    client_drive_link: Optional[str] = None  # New field for client drive link
-    payment_drive_link: Optional[str] = None  # New field - stored in client, copied to orders
     bank_account: Optional[str] = None
-
+    
     # Order fields
+    clients_details: Optional[str] = None  # New field for detailed client information
+    client_details: Optional[str] = None  # Fallback for UI compatibility
+    client_drive_link: Optional[str] = None  # New field for client drive link
     client_handler: Optional[str] = None  # For admin/manager to assign a handler
     order_date: Optional[str] = None
     reference_id: str
