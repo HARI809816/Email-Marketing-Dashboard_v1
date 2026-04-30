@@ -15,6 +15,7 @@ otps_collection = db["otps"]
 # --- INDEXES FOR PERFORMANCE ---
 users_collection.create_index("email", unique=True)
 users_collection.create_index("full_name")
+users_collection.create_index("role")
 clients_collection.create_index("client_id", unique=True)
 clients_collection.create_index("client_handler")
 orders_collection.create_index("client_id")

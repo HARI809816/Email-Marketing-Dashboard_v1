@@ -575,10 +575,11 @@ def get_all_users(current_user: dict = Depends(require_manager_or_higher)):
     """
     Get all regular Users. Accessible to Admin and Super Admin.
     """
-    users = list(users_collection.find({"role": UserRole.EMPLOYEE}))
+    users = list(users_collection.find({"role": UserRole.EMPLOYEE}, {"password": 0}))
     for u in users:
         u["_id"] = str(u["_id"])
-        u["password"] = decrypt_password(u.get("password", ""))
+        # Password is excluded for performance in list views
+        u["password"] = "REDACTED" 
     return {
         "status_code": 200,
         "status": "success",
@@ -591,10 +592,11 @@ def get_all_admins(current_user: dict = Depends(require_admin)):
     """
     Get all Admins and Super Admins. Accessible to Super Admin only.
     """
-    admins = list(users_collection.find({"role": {"$in": [UserRole.MANAGER, UserRole.ADMIN]}}))
+    admins = list(users_collection.find({"role": {"$in": [UserRole.MANAGER, UserRole.ADMIN]}}, {"password": 0}))
     for a in admins:
         a["_id"] = str(a["_id"])
-        a["password"] = decrypt_password(a.get("password", ""))
+        # Password is excluded for performance in list views
+        a["password"] = "REDACTED"
     return {
         "status_code": 200,
         "status": "success",
@@ -998,16 +1000,17 @@ def get_clients(current_user: dict = Depends(get_current_user)):
         employee_names = {current_user.get("full_name")}
         profile_names = set(current_user.get("profile_names", []))
     else:
-        # Fetch all employees to extract unique profile names and employee names
-        employees = list(users_collection.find({"role": UserRole.EMPLOYEE}, {"full_name": 1, "profile_names": 1}))
-        employee_names = set()
-        profile_names = set()
-        for emp in employees:
-            if emp.get("full_name"):
-                employee_names.add(emp["full_name"])
-            if emp.get("profile_names") and isinstance(emp["profile_names"], list):
-                for p in emp["profile_names"]:
-                    profile_names.add(p)
+        # Optimized retrieval of employee and profile names using projection and efficient sets
+        employees_data = list(users_collection.find(
+            {"role": UserRole.EMPLOYEE}, 
+            {"full_name": 1, "profile_names": 1, "_id": 0}
+        ))
+        employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
+        profile_names = {
+            p for emp in employees_data 
+            if isinstance(emp.get("profile_names"), list) 
+            for p in emp["profile_names"]
+        }
                 
     detail = {
         "employee_names": list(employee_names),
