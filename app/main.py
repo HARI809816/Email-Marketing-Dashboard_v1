@@ -720,6 +720,13 @@ def get_user_dashboard_data(client_match: dict):
                     },
                     {
                         "$addFields": {
+                            "order_total_usd": {
+                                "$cond": [
+                                    {"$eq": ["$currency", "INR"]},
+                                    {"$multiply": ["$total_amount", rate]},
+                                    "$total_amount"
+                                ]
+                            },
                             "order_paid": {
                                 "$sum": {
                                     "$map": {
@@ -740,23 +747,30 @@ def get_user_dashboard_data(client_match: dict):
                     {
                         "$group": {
                             "_id": None,
-                            "total_amount": {
-                                "$sum": {
-                                    "$cond": [
-                                        {"$eq": ["$currency", "INR"]},
-                                        {"$multiply": ["$total_amount", rate]},
-                                        "$total_amount"
-                                    ]
-                                }
-                            },
+                            "total_amount": {"$sum": "$order_total_usd"},
                             "paid_amount": {"$sum": "$order_paid"},
                             "order_count": {"$sum": 1},
                             "payment_status": {"$first": "$payment_status"},
                             "paid_order_count": {
-                                "$sum": {"$cond": [{"$eq": ["$payment_status", "Paid"]}, 1, 0]}
+                                "$sum": {
+                                    "$cond": [
+                                        {"$gt": ["$order_paid", 0]},
+                                        1, 0
+                                    ]
+                                }
                             },
                             "pending_order_count": {
-                                "$sum": {"$cond": [{"$eq": ["$payment_status", "Pending"]}, 1, 0]}
+                                "$sum": {
+                                    "$cond": [
+                                        {
+                                            "$and": [
+                                                {"$eq": ["$order_paid", 0]},
+                                                {"$ne": ["$order_status", "Inactive"]}
+                                            ]
+                                        },
+                                        1, 0
+                                    ]
+                                }
                             },
                             "reject_order_count": {
                                 "$sum": {"$cond": [{"$eq": ["$order_status", "Inactive"]}, 1, 0]}
@@ -766,7 +780,20 @@ def get_user_dashboard_data(client_match: dict):
                                     "client_id": "$client_id",
                                     "reference_id": "$reference_id",
                                     "order_status": "$order_status",
-                                    "payment_status": "$payment_status",
+                                    "paid_amount": "$order_paid",
+                                    "payment_status": {
+                                        "$cond": [
+                                            {"$gte": ["$order_paid", "$order_total_usd"]},
+                                            "Paid",
+                                            {
+                                                "$cond": [
+                                                    {"$gt": ["$order_paid", 0]},
+                                                    "Partial Paid",
+                                                    "Pending"
+                                                ]
+                                            }
+                                        ]
+                                    },
                                     "created_at": "$created_at",
                                     "order_date": "$order_date"
                                 }
@@ -809,6 +836,7 @@ def get_user_dashboard_data(client_match: dict):
             country_stats_map[country] = {
                 "country_name": country,
                 "client_count": 0,
+                "order_count": 0,
                 "paid_count": 0,
                 "paid_amount": 0.0,
                 "pending_count": 0,
@@ -816,6 +844,7 @@ def get_user_dashboard_data(client_match: dict):
             }
         
         country_stats_map[country]["client_count"] += 1
+        country_stats_map[country]["order_count"] += c.get("order_count", 0)
         country_stats_map[country]["paid_count"] += c.get("paid_order_count", 0)
         country_stats_map[country]["paid_amount"] = round(country_stats_map[country]["paid_amount"] + c.get("paid_amount", 0.0), 2)
         country_stats_map[country]["pending_count"] += c.get("pending_order_count", 0)
@@ -828,6 +857,7 @@ def get_user_dashboard_data(client_match: dict):
                 "reference_id": order.get("reference_id"),
                 "order_status": order.get("order_status"),
                 "payment_status": order.get("payment_status"),
+                "paid_amount": round(order.get("paid_amount", 0.0), 2),
                 "created_at": order.get("created_at"),
                 "order_date": order.get("order_date")
             })

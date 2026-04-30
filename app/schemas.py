@@ -73,6 +73,7 @@ class DashboardStats(BaseModel):
 class CountryStats(BaseModel):
     country_name: str
     client_count: int
+    order_count: int = 0
     paid_count: int
     paid_amount: float = 0.0
     pending_count: int
@@ -84,6 +85,7 @@ class OrderStatusDetail(BaseModel):
     reference_id: Optional[str] = None
     order_status: Optional[str] = None
     payment_status: Optional[str] = None
+    paid_amount: Optional[float] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     order_date: datetime = Field(default_factory=datetime.utcnow)
 
