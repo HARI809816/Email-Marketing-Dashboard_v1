@@ -86,9 +86,16 @@ class OrderStatusDetail(BaseModel):
     order_status: Optional[str] = None
     payment_status: Optional[str] = None
     paid_amount: Optional[float] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    order_date: datetime = Field(default_factory=datetime.utcnow)
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    order_date: Optional[datetime] = Field(default_factory=datetime.utcnow)
     country: Optional[str] = None
+
+    @field_validator("order_date", "created_at", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, v: Any) -> Any:
+        if v == "":
+            return None
+        return v
 
 class UserDetailResponse(UserResponse):
     country_based_details: list[CountryStats] = []
