@@ -994,16 +994,20 @@ def get_clients(current_user: dict = Depends(get_current_user)):
     clients = [format_mongo_id(c) for c in clients_collection.find(query)]
     resolved = resolve_client_handler_bulk(clients)
     
-    # Fetch all employees to extract unique profile names and employee names
-    employees = list(users_collection.find({"role": UserRole.EMPLOYEE}, {"full_name": 1, "profile_names": 1}))
-    employee_names = set()
-    profile_names = set()
-    for emp in employees:
-        if emp.get("full_name"):
-            employee_names.add(emp["full_name"])
-        if emp.get("profile_names") and isinstance(emp["profile_names"], list):
-            for p in emp["profile_names"]:
-                profile_names.add(p)
+    if current_user["role"] == UserRole.EMPLOYEE:
+        employee_names = {current_user.get("full_name")}
+        profile_names = set(current_user.get("profile_names", []))
+    else:
+        # Fetch all employees to extract unique profile names and employee names
+        employees = list(users_collection.find({"role": UserRole.EMPLOYEE}, {"full_name": 1, "profile_names": 1}))
+        employee_names = set()
+        profile_names = set()
+        for emp in employees:
+            if emp.get("full_name"):
+                employee_names.add(emp["full_name"])
+            if emp.get("profile_names") and isinstance(emp["profile_names"], list):
+                for p in emp["profile_names"]:
+                    profile_names.add(p)
                 
     detail = {
         "employee_names": list(employee_names),
