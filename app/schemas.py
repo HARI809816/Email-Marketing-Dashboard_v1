@@ -70,10 +70,28 @@ class DashboardStats(BaseModel):
     reject_count: int = 0
     reject_count_percentage: float = 0.0
 
+class CountryStats(BaseModel):
+    country_name: str
+    client_count: int
+    paid_count: int
+    paid_amount: float = 0.0
+    pending_count: int
+    reject_count: int
+
+class OrderStatusDetail(BaseModel):
+    client_name: Optional[str] = None
+    client_id: Optional[str] = None
+    reference_id: Optional[str] = None
+    order_status: Optional[str] = None
+    payment_status: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    order_date: datetime = Field(default_factory=datetime.utcnow)
+
 class UserDetailResponse(UserResponse):
-    handled_clients: list["ClientDetailResponse"] = []
-    dashboard_stats: Optional[DashboardStats] = None
+    country_based_details: list[CountryStats] = []
+    order_status_details: list[OrderStatusDetail] = []
     country_split: dict[str, float] = {}
+    dashboard_stats: Optional[DashboardStats] = None
 
 class Token(BaseModel):
     access_token: str
@@ -132,6 +150,7 @@ class ClientDetailResponse(ClientBase):
     paid_amount: float = 0.0
     remaining_amount: float = 0.0
     payment_status: Optional[str] = "No Order"
+    order_status: Optional[str] = "Active"  
     client_handler_name: Optional[str] = None  # Resolved full name
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

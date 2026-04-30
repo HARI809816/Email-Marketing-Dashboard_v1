@@ -693,19 +693,13 @@ def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(get_cu
 #     }
 
 
-@app.get("/users/me/details", response_model=ApiResponse[UserDetailResponse])
-def get_own_details(current_user: dict = Depends(get_current_user)):
+def get_user_dashboard_data(client_match: dict):
     """
-    Get current user profile details including nested handled clients and dashboard stats.
-    Optimized with MongoDB Aggregation Pipeline and caching.
+    Common logic to fetch dashboard stats, country stats, and order status details
+    based on a client filter (e.g., all clients for Admin, or specific handler for Employee).
     """
     from app.currency_converter import get_inr_to_usd_rate
     rate = get_inr_to_usd_rate() or 0.012
-
-    # 1. Determine client filter
-    client_match = {}
-    if current_user["role"] not in [UserRole.ADMIN, UserRole.MANAGER]:
-        client_match = {"client_handler": current_user.get("email")}
 
     # 2. Aggregation Pipeline to fetch clients and their stats in ONE go
     pipeline = [
@@ -755,41 +749,27 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
                                     ]
                                 }
                             },
-                            "writing_amount": {
-                                "$sum": {
-                                    "$cond": [
-                                        {"$eq": ["$currency", "INR"]},
-                                        {"$multiply": ["$writing_amount", rate]},
-                                        "$writing_amount"
-                                    ]
-                                }
-                            },
-                            "modification_amount": {
-                                "$sum": {
-                                    "$cond": [
-                                        {"$eq": ["$currency", "INR"]},
-                                        {"$multiply": ["$modification_amount", rate]},
-                                        "$modification_amount"
-                                    ]
-                                }
-                            },
-                            "po_amount": {
-                                "$sum": {
-                                    "$cond": [
-                                        {"$eq": ["$currency", "INR"]},
-                                        {"$multiply": ["$po_amount", rate]},
-                                        "$po_amount"
-                                    ]
-                                }
-                            },
                             "paid_amount": {"$sum": "$order_paid"},
                             "order_count": {"$sum": 1},
                             "payment_status": {"$first": "$payment_status"},
+                            "paid_order_count": {
+                                "$sum": {"$cond": [{"$eq": ["$payment_status", "Paid"]}, 1, 0]}
+                            },
                             "pending_order_count": {
                                 "$sum": {"$cond": [{"$eq": ["$payment_status", "Pending"]}, 1, 0]}
                             },
                             "reject_order_count": {
                                 "$sum": {"$cond": [{"$eq": ["$order_status", "Inactive"]}, 1, 0]}
+                            },
+                            "orders_list": {
+                                "$push": {
+                                    "client_id": "$client_id",
+                                    "reference_id": "$reference_id",
+                                    "order_status": "$order_status",
+                                    "payment_status": "$payment_status",
+                                    "created_at": "$created_at",
+                                    "order_date": "$order_date"
+                                }
                             }
                         }
                     }
@@ -801,14 +781,12 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         {
             "$addFields": {
                 "total_amount": {"$ifNull": ["$stats.total_amount", 0.0]},
-                "writing_amount": {"$ifNull": ["$stats.writing_amount", 0.0]},
-                "modification_amount": {"$ifNull": ["$stats.modification_amount", 0.0]},
-                "po_amount": {"$ifNull": ["$stats.po_amount", 0.0]},
                 "paid_amount": {"$ifNull": ["$stats.paid_amount", 0.0]},
                 "order_count": {"$ifNull": ["$stats.order_count", 0]},
-                "payment_status": {"$ifNull": ["$stats.payment_status", "No Order"]},
+                "paid_order_count": {"$ifNull": ["$stats.paid_order_count", 0]},
                 "pending_order_count": {"$ifNull": ["$stats.pending_order_count", 0]},
-                "reject_order_count": {"$ifNull": ["$stats.reject_order_count", 0]}
+                "reject_order_count": {"$ifNull": ["$stats.reject_order_count", 0]},
+                "orders_list": {"$ifNull": ["$stats.orders_list", []]}
             }
         },
         {"$project": {"stats": 0}}
@@ -816,16 +794,9 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     
     clients_with_stats = list(clients_collection.aggregate(pipeline))
     
-    # Format IDs and calculate remaining amounts
-    for c in clients_with_stats:
-        c["_id"] = str(c["_id"])
-        c["remaining_amount"] = c["total_amount"] - c["paid_amount"]
+    country_stats_map = {}
+    order_status_details = []
     
-    # Resolve all handler names in bulk (single DB query)
-    resolve_client_handler_bulk(clients_with_stats)
-    
-    handled_clients = []
-    country_split = {}
     total_system_amount = 0.0
     total_system_paid = 0.0
     total_system_orders = 0
@@ -833,29 +804,40 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
     total_system_rejects = 0
     
     for c in clients_with_stats:
-        # Calculate country split for Pie Chart
         country = c.get("country") or "Unknown"
-        country_split[country] = round(country_split.get(country, 0.0) + c.get("paid_amount", 0.0), 2)
+        if country not in country_stats_map:
+            country_stats_map[country] = {
+                "country_name": country,
+                "client_count": 0,
+                "paid_count": 0,
+                "paid_amount": 0.0,
+                "pending_count": 0,
+                "reject_count": 0
+            }
         
-        # Pull global stats from client totals
-        total_system_amount += c["total_amount"]
-        total_system_paid += c["paid_amount"]
-        total_system_orders += c["order_count"]
-        total_system_pending += c["pending_order_count"]
+        country_stats_map[country]["client_count"] += 1
+        country_stats_map[country]["paid_count"] += c.get("paid_order_count", 0)
+        country_stats_map[country]["paid_amount"] = round(country_stats_map[country]["paid_amount"] + c.get("paid_amount", 0.0), 2)
+        country_stats_map[country]["pending_count"] += c.get("pending_order_count", 0)
+        country_stats_map[country]["reject_count"] += c.get("reject_order_count", 0)
+        
+        for order in c.get("orders_list", []):
+            order_status_details.append({
+                "client_name": c.get("name"),
+                "client_id": order.get("client_id"),
+                "reference_id": order.get("reference_id"),
+                "order_status": order.get("order_status"),
+                "payment_status": order.get("payment_status"),
+                "created_at": order.get("created_at"),
+                "order_date": order.get("order_date")
+            })
+            
+        total_system_amount += c.get("total_amount", 0.0)
+        total_system_paid += c.get("paid_amount", 0.0)
+        total_system_orders += c.get("order_count", 0)
+        total_system_pending += c.get("pending_order_count", 0)
         total_system_rejects += c.get("reject_order_count", 0)
 
-        # print(c["client_id"])   
-        # print(c["total_amount"])
-        
-        # Cleanup extra fields not needed in response
-        c.pop("orders", None)
-        c.pop("payments", None)
-        c.pop("order_count", None)
-        c.pop("pending_order_count", None)
-        c.pop("reject_order_count", None)
-        handled_clients.append(c)
-
-    # 3. Calculate Dashboard Stats
     total_clients_count = len(clients_with_stats)
     pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
     
@@ -871,11 +853,36 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
         "reject_count_percentage": round((total_system_rejects / total_system_orders * 100), 1) if total_system_orders > 0 else 0.0
     }
     
+    country_based_details = list(country_stats_map.values())
+    country_split = {c["country_name"]: c["paid_amount"] for c in country_based_details}
+    
+    return {
+        "dashboard_stats": dashboard_stats,
+        "country_based_details": country_based_details,
+        "country_split": country_split,
+        "order_status_details": order_status_details
+    }
+
+
+@app.get("/users/me/details", response_model=ApiResponse[UserDetailResponse])
+def get_own_details(current_user: dict = Depends(get_current_user)):
+    """
+    Get current user profile details including country stats and order statuses.
+    """
+    # 1. Determine client filter (Admin/Manager see all, Employee see only their own)
+    client_match = {}
+    if current_user["role"] not in [UserRole.ADMIN, UserRole.MANAGER]:
+        client_match = {"client_handler": current_user.get("email")}
+
+    # 2. Fetch data using helper
+    dashboard_data = get_user_dashboard_data(client_match)
+    
+    # 3. Format user profile
     user_data = format_mongo_id(current_user.copy())
     user_data["password"] = decrypt_password(user_data.get("password", ""))
-    user_data["handled_clients"] = handled_clients
-    user_data["dashboard_stats"] = dashboard_stats
-    user_data["country_split"] = country_split
+    
+    # 4. Merge dashboard data into user response
+    user_data.update(dashboard_data)
     
     return {
         "status_code": 200,
@@ -887,22 +894,25 @@ def get_own_details(current_user: dict = Depends(get_current_user)):
 @app.get("/users/{email}/details", response_model=ApiResponse[UserDetailResponse])
 def get_user_details(email: str, current_user: dict = Depends(require_manager_or_higher)):
     """
-    Get profile details of any user including handled clients.
+    Get profile details of any user including country stats and order statuses.
     Restricted to Admin and Manager.
     """
     target_user = users_collection.find_one({"email": email})
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
         
-    # Find clients handled by this target user (query by unique email)
-    clients = list(clients_collection.find({"client_handler": target_user.get("email")}))
+    # 1. Determine client filter (Admin/Manager viewing an employee - filter by that employee's clients)
+    client_match = {"client_handler": target_user.get("email")}
+
+    # 2. Fetch data using helper
+    dashboard_data = get_user_dashboard_data(client_match)
     
+    # 3. Format target user profile
     user_data = format_mongo_id(target_user)
     user_data["password"] = decrypt_password(user_data.get("password", ""))
-    for c in clients:
-        format_mongo_id(c)
-        resolve_client_handler(c)
-    user_data["handled_clients"] = clients
+    
+    # 4. Merge dashboard data into user response
+    user_data.update(dashboard_data)
     
     return {
         "status_code": 200,
