@@ -130,7 +130,7 @@ class ClientBase(BaseModel):
     client_id: str
     name: str
     country: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     whatsapp_no: Optional[str] = None
     client_ref_no: Optional[str] = None
     client_link: Optional[str] = None
@@ -140,6 +140,13 @@ class ClientBase(BaseModel):
     total_orders: int = 0
     client_handler: Optional[str] = None  # Stores employee EMAIL (unique reference)
     client_handler_name: Optional[str] = None  # Resolved full name for display (not stored in DB)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, v: Any) -> Any:
+        if v == "":
+            return None
+        return v
 
 class ClientCreate(ClientBase):
     pass
@@ -330,7 +337,7 @@ class DashboardUpdate(BaseModel):
     # CLIENT FIELDS
     client_id: Optional[str] = None
     client_country: Optional[str] = None
-    client_Email: Optional[EmailStr] = None
+    client_Email: Optional[str] = None
     client_whatsapp_number: Optional[str] = None
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
