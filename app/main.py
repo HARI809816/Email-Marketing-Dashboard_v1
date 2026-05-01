@@ -1,3 +1,4 @@
+from typing import Optional, Any
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -173,6 +174,20 @@ def format_mongo_id(doc):
     if doc and "_id" in doc:
         doc["_id"] = str(doc["_id"])
     return doc
+
+def parse_date(date_str: Any) -> Optional[datetime]:
+    """Helper to convert string dates to datetime objects for MongoDB."""
+    if not date_str:
+        return None
+    if isinstance(date_str, datetime):
+        return date_str
+    try:
+        # Handle simple date strings like "2024-01-01"
+        if len(date_str) == 10:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+    except Exception:
+        return None
 
 def resolve_client_handler(client: dict) -> dict:
     """
@@ -1426,7 +1441,8 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "client_link": request.client_link,
             "bank_account": request.client_bank_account,
             "affiliation": request.client_affiliation,
-            
+            "payment_drive_link": request.payment_drive_link,
+            "client_drive_link": request.client_drive_link,
             "total_orders": 0,
             "client_handler": current_user.get("email") if current_user["role"] == UserRole.EMPLOYEE else get_user_email_by_name(request.client_handler),
             "created_at": datetime.utcnow()
@@ -1478,7 +1494,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         "profile_name": request.profile_name,
         "client_ref_no": request.client_ref_no,
         "s_no": global_order_count,
-        "order_date": request.order_date,
+        "order_date": parse_date(request.order_date),
         "client_id": client_id,
         "manuscript_id": manuscript_id,
         "journal_name": request.journal_name,
@@ -1486,19 +1502,20 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         "order_type": request.order_type,
         "index": request.index,
         "rank": request.rank,
-        "currency": request.currency,
-        "total_amount": 0,  # Will be updated if payment is created
-        "writing_amount": 0,
-        "modification_amount": 0,
-        "po_amount": 0,
-        "writing_start_date": request.write_start_date,
-        "writing_end_date": None,
-        "modification_start_date": None,
-        "modification_end_date": None,
-        "po_start_date": None,
-        "po_end_date": None,
-        "payment_status": request.payment_status,
-        "payment_drive_link": request.payment_drive_link,
+        "currency": request.currency or "USD",
+        "total_amount": request.total_amount or 0,
+        "writing_amount": request.writing_amount or 0,
+        "modification_amount": request.modification_amount or 0,
+        "po_amount": request.po_amount or 0,
+        "writing_start_date": parse_date(request.writing_start_date) or parse_date(request.write_start_date),
+        "writing_end_date": parse_date(request.writing_end_date),
+        "modification_start_date": parse_date(request.modification_start_date),
+        "modification_end_date": parse_date(request.modification_end_date),
+        "po_start_date": parse_date(request.po_start_date),
+        "po_end_date": parse_date(request.po_end_date),
+        "payment_status": request.payment_status or "Pending",
+        "order_status": "Active",
+        "payment_drive_link": request.payment_drive_link or client_payment_drive_link,
         "clients_details": request.clients_details or getattr(request, 'client_details', None),
         "client_drive_link": request.client_drive_link,
         "remarks": None,
@@ -1518,7 +1535,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "phase": request.payment_phase or 1,
             "amount": request.payment_amount,
             "payment_received_account": request.payment_received_account,
-            "payment_date": request.payment_date or datetime.utcnow().date().isoformat(),
+            "payment_date": parse_date(request.payment_date) or datetime.utcnow(),
             "status": "paid",
             "paid_amount": request.payment_amount,
             "created_at": datetime.utcnow()
@@ -1531,11 +1548,12 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
 
         payments_collection.insert_one(payment_data)
 
-        # Update order total_amount
-        orders_collection.update_one(
-            {"order_id": order_id},
-            {"$set": {"total_amount": request.payment_amount}}
-        )
+        # Update order total_amount only if it wasn't already set from request
+        if not order_data.get("total_amount"):
+            orders_collection.update_one(
+                {"order_id": order_id},
+                {"$set": {"total_amount": request.payment_amount}}
+            )
         payment_created = True
 
     # Step 5: Update Client Order Count
