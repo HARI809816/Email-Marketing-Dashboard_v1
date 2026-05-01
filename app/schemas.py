@@ -147,16 +147,14 @@ class ClientBase(BaseModel):
         if v == "":
             return None
         return v
-    
+
+class ClientCreate(ClientBase):
     @field_validator("client_id", "name", mode="before")
     @classmethod
     def ensure_not_empty(cls, v: Any) -> Any:
         if isinstance(v, str) and v.strip() == "":
             raise ValueError("Field cannot be empty")
         return v
-
-class ClientCreate(ClientBase):
-    pass
 
 class ClientResponse(ClientBase):
     id: str = Field(..., alias="_id")
