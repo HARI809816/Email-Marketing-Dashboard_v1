@@ -575,11 +575,11 @@ def get_all_users(current_user: dict = Depends(require_manager_or_higher)):
     """
     Get all regular Users. Accessible to Admin and Super Admin.
     """
-    users = list(users_collection.find({"role": UserRole.EMPLOYEE}, {"password": 0}))
+    users = list(users_collection.find({"role": UserRole.EMPLOYEE}))
     for u in users:
         u["_id"] = str(u["_id"])
-        # Password is excluded for performance in list views
-        u["password"] = "REDACTED" 
+        # Decrypt password for display
+        u["password"] = decrypt_password(u.get("password", "")) 
     return {
         "status_code": 200,
         "status": "success",
@@ -592,11 +592,11 @@ def get_all_admins(current_user: dict = Depends(require_admin)):
     """
     Get all Admins and Super Admins. Accessible to Super Admin only.
     """
-    admins = list(users_collection.find({"role": {"$in": [UserRole.MANAGER, UserRole.ADMIN]}}, {"password": 0}))
+    admins = list(users_collection.find({"role": {"$in": [UserRole.MANAGER, UserRole.ADMIN]}}))
     for a in admins:
         a["_id"] = str(a["_id"])
-        # Password is excluded for performance in list views
-        a["password"] = "REDACTED"
+        # Decrypt password for display
+        a["password"] = decrypt_password(a.get("password", ""))
     return {
         "status_code": 200,
         "status": "success",
