@@ -141,11 +141,18 @@ class ClientBase(BaseModel):
     client_handler: Optional[str] = None  # Stores employee EMAIL (unique reference)
     client_handler_name: Optional[str] = None  # Resolved full name for display (not stored in DB)
 
-    @field_validator("email", mode="before")
+    @field_validator("email", "whatsapp_no", "client_ref_no", "client_link", "bank_account", "affiliation", mode="before")
     @classmethod
     def empty_string_to_none(cls, v: Any) -> Any:
         if v == "":
             return None
+        return v
+    
+    @field_validator("client_id", "name", mode="before")
+    @classmethod
+    def ensure_not_empty(cls, v: Any) -> Any:
+        if isinstance(v, str) and v.strip() == "":
+            raise ValueError("Field cannot be empty")
         return v
 
 class ClientCreate(ClientBase):
@@ -442,3 +449,26 @@ class UnifiedCreateRequest(BaseModel):
     payment_phase: Optional[int] = None
     payment_date: Optional[str] = None
     payment_received_account: Optional[str] = None
+
+    @field_validator(
+        "client_country", "client_email", "client_whatsapp_no", "client_ref_no", 
+        "client_link", "client_bank_account", "client_affiliation", "bank_account",
+        "clients_details", "client_details", "client_drive_link", "payment_drive_link",
+        "order_date", "journal_name", "title", "order_type", "index", "rank",
+        "write_start_date", "profile_start_date", "writing_start_date", "writing_end_date",
+        "modification_start_date", "modification_end_date", "po_start_date", "po_end_date",
+        "payment_date", "payment_received_account",
+        mode="before"
+    )
+    @classmethod
+    def empty_to_none(cls, v: Any) -> Any:
+        if v == "":
+            return None
+        return v
+
+    @field_validator("client_id", "client_name", "reference_id", mode="before")
+    @classmethod
+    def ensure_id_not_empty(cls, v: Any) -> Any:
+        if isinstance(v, str) and v.strip() == "":
+            raise ValueError("ID fields cannot be empty")
+        return v
