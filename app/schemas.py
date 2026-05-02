@@ -416,15 +416,15 @@ class UnifiedCreateRequest(BaseModel):
     order_date: Optional[str] = None
     reference_id: str
     profile_name: str  # From user profile
-    title: str
-    order_type: str  # writing | modification | proofreading
-    index: str  # SCI | Scopus | ESCI
-    rank: str  # Q1 | Q2 | Q3 | Q4
-    journal_name: str
+    title: Optional[str] = None
+    order_type: Optional[str] = None  # writing | modification | proofreading
+    index: Optional[str] = None  # SCI | Scopus | ESCI
+    rank: Optional[str] = None  # Q1 | Q2 | Q3 | Q4
+    journal_name: Optional[str] = None
     write_start_date: Optional[str] = None
     profile_start_date: Optional[str] = None
-    currency: str  # USD | INR
-    payment_status: str  # pending | partial | paid
+    currency: Optional[str] = "USD"  # USD | INR
+    payment_status: Optional[str] = "Pending"  # pending | partial | paid
     po_start_date: Optional[str] = None
     po_end_date: Optional[str] = None
     po_amount: Optional[float] = None
